@@ -1,0 +1,37 @@
+{
+  "name": "azan-windows",
+  "productName": "Azan",
+  "version": "1.1.0",
+  "description": "أذان: مواقيت الصلاة والأذان والختمة والأذكار. تطوير مؤمن الجعفراوي",
+  "author": "مؤمن الجعفراوي (Momin Jafarawi)",
+  "copyright": "© 2026 مؤمن الجعفراوي",
+  "main": "main.js",
+  "scripts": { "start": "electron ." },
+  "devDependencies": { "electron": "45.0.0", "electron-builder": "26.15.3" },
+  "build": {
+    "appId": "com.momen.azan.win",
+    "productName": "Azan",
+    "copyright": "© 2026 مؤمن الجعفراوي",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["main.js", "preload.js", "app/**/*", "package.json"],
+    "extraResources": [{ "from": "res", "to": "res" }],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }, { "target": "zip", "arch": ["x64"] }],
+      "icon": "build/icon.png",
+      "artifactName": "Azan-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "أذان",
+      "runAfterFinish": true,
+      "artifactName": "Azan-Setup-${version}.${ext}",
+      "installerLanguages": ["ar_SA", "en_US"],
+      "language": "1025"
+    },
+    "mac": { "target": "dir", "identity": null }
+  }
+}

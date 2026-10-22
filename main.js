@@ -1,0 +1,514 @@
+// أذان - Windows (Electron). Port of the Mac app: tray, panel, desktop widget, adhan, silent spoken alert,
+// khatma, adhkar, Friday, Ramadan, meeting detection, media pause, self-check and repair.
+const { app, BrowserWindow, Tray, Menu, ipcMain, screen, shell, nativeImage, net } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
+const { execFile } = require('child_process');
+const Calc = require('./app/calc.js');
+
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+
+const TEST = !!process.env.AZAN_DATA;
+// On Windows: %APPDATA%\Azan. Anywhere else (testing on the Mac) NEVER the Mac app's folder
+// (~/Library/Application Support/Azan), so the Mac settings can't be overwritten.
+const DATA = process.env.AZAN_DATA
+  || path.join(app.getPath('appData'), process.platform === 'win32' ? 'Azan' : 'Azan-Windows-Dev');
+if (process.platform !== 'win32' && path.resolve(DATA) === path.resolve(path.join(app.getPath('appData'), 'Azan'))) {
+  throw new Error('refusing to use the Mac app data folder');
+}
+// Chromium's own files go in a subfolder, never next to settings.json
+app.setPath('userData', path.join(DATA, 'electron'));
+if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }
+const RES = app.isPackaged ? path.join(process.resourcesPath, 'res') : path.join(__dirname, 'res');
+const SPARE = path.join(DATA, 'Spare');
+const LOG = path.join(DATA, 'azan.log');
+fs.mkdirSync(DATA, { recursive: true });
+
+function log(s) {
+  try {
+    const line = `${new Date().toISOString()} ${s}\n`;
+    if (fs.existsSync(LOG) && fs.statSync(LOG).size > 512000) fs.unlinkSync(LOG);
+    fs.appendFileSync(LOG, line);
+  } catch (_) {}
+}
+
+// ---------------- settings (never overwrite a file that exists but cannot be read) ----------------
+const DEFAULTS = {
+  autoLocation: true, lat: null, lon: null, placeName: '', countryCode: null,
+  autoMethod: true, method: 'mwl', school: 'shafi', highLat: 'auto', offsets: [0, 0, 0, 0, 0, 0],
+  hijriOffset: 0, latinDigits: false, use24h: true,
+  modes: {}, voice: 'makkah', fajrVoice: 'makkah_fajr', volume: 0.8, preReminder: 10, smartPause: true, meetingSilent: true,
+  khatmaOn: true, khatmaDays: 30, khatmaStart: Date.now(), khatmaRead: 0, khatmaCount: 0, khatmaAfterPrayer: true,
+  adhkarMorning: true, adhkarEvening: true, adhkarAfterPrayer: true, jumuah: true, khutbahBefore: 30, suhoorBefore: 45,
+  launchAtLogin: true, deskOn: true, deskSize: 'medium', deskOnTop: false, deskX: null, deskY: null,
+  speakOn: true, speakRepeats: 2, speakInMeeting: true, speakVolume: 0.6, speakTakbir: true,
+};
+const SETTINGS = path.join(DATA, 'settings.json');
+let readOnly = false;
+
+function sanitize(raw) {
+  const s = { ...DEFAULTS };
+  if (raw && typeof raw === 'object') {
+    for (const k of Object.keys(DEFAULTS)) {
+      const v = raw[k];
+      if (v === undefined) continue;
+      const def = DEFAULTS[k];
+      if (def === null || typeof v === typeof def || (Array.isArray(def) && Array.isArray(v))) s[k] = v;
+    }
+  }
+  return s;
+}
+function loadSettings() {
+  if (!fs.existsSync(SETTINGS)) return { ...DEFAULTS };
+  try { return sanitize(JSON.parse(fs.readFileSync(SETTINGS, 'utf8'))); } catch (e) {
+    const aside = path.join(DATA, `settings.unreadable-${Date.now()}.json`);
+    try { fs.copyFileSync(SETTINGS, aside); } catch (_) {}
+    readOnly = true;
+    log(`settings unreadable, kept as ${path.basename(aside)}`);
+    const bdir = path.join(DATA, 'Backups');
+    try {
+      for (const f of fs.readdirSync(bdir).sort().reverse()) {
+        try { const s = sanitize(JSON.parse(fs.readFileSync(path.join(bdir, f), 'utf8'))); log(`restored from ${f}`); return s; } catch (_) {}
+      }
+    } catch (_) {}
+    return { ...DEFAULTS };
+  }
+}
+function saveSettings() {
+  if (readOnly) return;
+  try { const tmp = SETTINGS + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(S, null, 1)); fs.renameSync(tmp, SETTINGS); } catch (e) { log('save failed ' + e.message); }
+}
+function dailyBackup() {
+  if (!fs.existsSync(SETTINGS)) return;
+  const bdir = path.join(DATA, 'Backups');
+  fs.mkdirSync(bdir, { recursive: true });
+  const name = `settings-${new Date().toISOString().slice(0, 10)}.json`;
+  const dest = path.join(bdir, name);
+  if (!fs.existsSync(dest)) try { fs.copyFileSync(SETTINGS, dest); } catch (_) {}
+  const all = fs.readdirSync(bdir).filter((f) => f.startsWith('settings-')).sort();
+  for (const old of all.slice(0, Math.max(0, all.length - 7))) try { fs.unlinkSync(path.join(bdir, old)); } catch (_) {}
+}
+let S = loadSettings();
+
+// ---------------- self-check and repair ----------------
+const VOICES = ['makkah', 'makkah_fajr', 'madinah', 'madinah_fajr', 'alafasy', 'alafasy_fajr', 'aqsa', 'abdulbasit'];
+let broken = new Set();
+let report = { checked: 0, problems: [], repaired: [], date: Date.now() };
+const sha = (f) => { try { return crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex'); } catch (_) { return null; } };
+
+function resPath(rel) {
+  const inRes = path.join(RES, rel);
+  if (!broken.has(rel) && fs.existsSync(inRes)) return inRes;
+  const spare = path.join(SPARE, rel);
+  return fs.existsSync(spare) ? spare : null;
+}
+
+function selfCheck() {
+  const r = { checked: 0, problems: [], repaired: [], date: Date.now() };
+  let manifest = {};
+  try { manifest = JSON.parse(fs.readFileSync(path.join(RES, 'manifest.json'), 'utf8')); } catch (_) {
+    try { manifest = JSON.parse(fs.readFileSync(path.join(SPARE, 'manifest.json'), 'utf8')); r.repaired.push('manifest.json'); } catch (_) { r.problems.push('manifest.json'); }
+  }
+  broken = new Set();
+  for (const [rel, hash] of Object.entries(manifest)) {
+    r.checked++;
+    const inRes = path.join(RES, rel), spare = path.join(SPARE, rel);
+    const resOK = sha(inRes) === hash, spareOK = sha(spare) === hash;
+    if (resOK) {
+      if (!spareOK) { try { fs.mkdirSync(path.dirname(spare), { recursive: true }); fs.copyFileSync(inRes, spare); } catch (_) {} }
+      continue;
+    }
+    if (spareOK) {
+      // put the healthy copy back into the install folder; if that is not allowed, use the spare copy directly
+      try { fs.mkdirSync(path.dirname(inRes), { recursive: true }); fs.copyFileSync(spare, inRes); } catch (_) { broken.add(rel); }
+      r.repaired.push(rel);
+    } else { broken.add(rel); r.problems.push(rel); }
+  }
+  try { fs.mkdirSync(SPARE, { recursive: true }); if (fs.existsSync(path.join(RES, 'manifest.json'))) fs.copyFileSync(path.join(RES, 'manifest.json'), path.join(SPARE, 'manifest.json')); } catch (_) {}
+
+  const avail = VOICES.filter((v) => resPath(`sounds/${v}.mp3`));
+  if (avail.length) {
+    if (!avail.includes(S.voice)) { S.voice = avail[0]; r.repaired.push('صوت الأذان'); }
+    if (!avail.includes(S.fajrVoice)) { S.fajrVoice = avail.find((v) => v.includes('fajr')) || avail[0]; r.repaired.push('صوت الفجر'); }
+  }
+  if (!TEST && app.isPackaged) {
+    const li = app.getLoginItemSettings();
+    if (S.launchAtLogin && !li.openAtLogin) { app.setLoginItemSettings({ openAtLogin: true }); r.repaired.push('التشغيل مع ويندوز'); }
+  }
+  log(`selfcheck: ${r.checked} files, problems=${r.problems.join(',')} repaired=${r.repaired.join(',')}`);
+  report = r;
+  return r;
+}
+
+// ---------------- derived state ----------------
+const ramadanNow = () => Calc.isRamadan(new Date(), S.hijriOffset);
+const effMethod = () => (S.autoMethod ? Calc.methodForCountry(S.countryCode) : S.method);
+function calcInput(ramadan = ramadanNow()) {
+  if (S.lat == null || S.lon == null) return null;
+  return { lat: S.lat, lon: S.lon, method: effMethod(), school: S.school, highLat: S.highLat, offsets: S.offsets, ramadan };
+}
+const modeOf = (p) => S.modes[p] || (p === 'sunrise' ? 'off' : 'adhan');
+
+let playing = null;         // prayer key while the adhan plays
+let locationStatus = 'idle';
+function publicState() {
+  return { settings: S, effMethod: effMethod(), methods: Object.fromEntries(Object.entries(Calc.METHODS).map(([k, v]) => [k, v.ar])),
+    playing, report, locationStatus, voices: VOICES, now: Date.now(), version: app.getVersion() };
+}
+function broadcast() { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send('state', publicState()); }
+
+function update(patch) {
+  const before = JSON.stringify(S);
+  S = sanitize({ ...S, ...patch });
+  if (JSON.stringify(S) === before) return;
+  saveSettings();
+  if ('launchAtLogin' in patch && !TEST && app.isPackaged) app.setLoginItemSettings({ openAtLogin: !!S.launchAtLogin });
+  if ('deskOn' in patch || 'deskSize' in patch || 'deskOnTop' in patch) applyDesk();
+  if ('autoLocation' in patch && S.autoLocation) autoLocate();
+  broadcast();
+}
+
+// ---------------- location (IP based, plus city search) ----------------
+async function getJSON(url) {
+  const r = await net.fetch(url, { headers: { 'Accept-Language': 'ar' } });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+async function autoLocate() {
+  if (!S.autoLocation) return;
+  locationStatus = 'locating'; broadcast();
+  try {
+    let j = await getJSON('https://ipwho.is/?lang=ar');
+    if (!j || j.success === false) j = null;
+    let lat, lon, city, cc;
+    if (j) { lat = j.latitude; lon = j.longitude; city = j.city; cc = j.country_code; } else {
+      const k = await getJSON('https://ipapi.co/json/');
+      lat = k.latitude; lon = k.longitude; city = k.city; cc = k.country_code;
+    }
+    if (typeof lat !== 'number') throw new Error('no position');
+    const near = S.lat != null && Math.abs(S.lat - lat) < 0.05 && Math.abs(S.lon - lon) < 0.05;
+    if (!near || !S.placeName) update({ lat: Math.round(lat * 1e4) / 1e4, lon: Math.round(lon * 1e4) / 1e4, placeName: city || S.placeName, countryCode: cc || S.countryCode });
+    locationStatus = 'ok';
+    log(`location: ${city} ${cc}`);
+  } catch (e) { locationStatus = S.lat == null ? 'failed' : 'ok'; log('location failed ' + e.message); }
+  broadcast();
+}
+async function searchCity(q) {
+  const j = await getJSON(`https://geocoding-api.open-meteo.com/v1/search?count=8&language=ar&name=${encodeURIComponent(q)}`);
+  return (j.results || []).map((r) => ({ name: [r.name, r.country].filter(Boolean).join('، '), city: r.name, cc: r.country_code, lat: r.latitude, lon: r.longitude }));
+}
+
+// ---------------- meeting (microphone in use) and media pause ----------------
+function micInUse() {
+  return new Promise((resolve) => {
+    if (process.platform !== 'win32') return resolve(!!process.env.AZAN_MEETING);
+    execFile('reg', ['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\microphone', '/s', '/v', 'LastUsedTimeStop'],
+      { windowsHide: true, timeout: 4000 }, (err, out) => {
+        if (err || !out) return resolve(false);
+        resolve(/LastUsedTimeStop\s+REG_QWORD\s+0x0\s*$/m.test(out));
+      });
+  });
+}
+const PS_MEDIA = (action, ids) => `
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | ? { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation\`1' })[0]
+function Await($op, $type) { $t = $asTask.MakeGenericMethod($type).Invoke($null, @($op)); $t.Wait(-1) | Out-Null; $t.Result }
+[Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager,Windows.Media.Control,ContentType=WindowsRuntime] | Out-Null
+$mgr = Await ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager])
+$ids = @(${(ids || []).map((i) => `'${String(i).replace(/'/g, '')}'`).join(',')})
+foreach ($s in $mgr.GetSessions()) {
+  ${action === 'pause'
+    ? "if ($s.GetPlaybackInfo().PlaybackStatus -eq 'Playing') { Await ($s.TryPauseAsync()) ([bool]) | Out-Null; Write-Output $s.SourceAppUserModelId }"
+    : "if ($ids -contains $s.SourceAppUserModelId) { Await ($s.TryPlayAsync()) ([bool]) | Out-Null }"}
+}`;
+function runPS(script) {
+  return new Promise((resolve) => {
+    if (process.platform !== 'win32') return resolve('');
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script], { windowsHide: true, timeout: 8000 },
+      (err, out) => { if (err) log('powershell: ' + err.message); resolve(out || ''); });
+  });
+}
+let pausedMedia = [];
+async function pauseMedia() { pausedMedia = (await runPS(PS_MEDIA('pause'))).split(/\r?\n/).map((s) => s.trim()).filter(Boolean); if (pausedMedia.length) log('paused ' + pausedMedia.join(',')); }
+async function resumeMedia() { if (!pausedMedia.length) return; const ids = pausedMedia; pausedMedia = []; await runPS(PS_MEDIA('play', ids)); }
+
+// ---------------- audio (hidden window) ----------------
+let audioWin = null;
+const audio = (cmd) => { if (audioWin && !audioWin.isDestroyed()) audioWin.webContents.send('audio', cmd); };
+const TAKBIR_END = { makkah: 14.4, makkah_fajr: 10.9, madinah: 9.8, madinah_fajr: 14.4, alafasy: 15.6, alafasy_fajr: 17.9, aqsa: 10.7, abdulbasit: 10.3 };
+const fileUrl = (p) => (p ? 'file:///' + p.replace(/\\/g, '/').replace(/^\//, '') : null);
+
+async function startAdhan(p) {
+  if (S.smartPause) await pauseMedia();
+  playing = p;
+  audio({ type: 'adhan', src: fileUrl(resPath(`sounds/${p === 'fajr' ? S.fajrVoice : S.voice}.mp3`)), volume: S.volume });
+  updateTray(); broadcast();
+}
+function stopAdhan() { audio({ type: 'stop' }); if (playing) adhanEnded(); }
+function adhanEnded() {
+  playing = null;
+  resumeMedia();
+  updateTray(); broadcast();
+  if (cardKind === 'adhan') setTimeout(() => closeCard(), 30000);
+}
+function announce(p) {
+  const key = p === 'maghrib' && ramadanNow() ? 'iftar' : p;
+  const voice = S.speakTakbir ? (p === 'fajr' ? S.fajrVoice : S.voice) : null;
+  audio({ type: 'announce', takbir: voice ? fileUrl(resPath(`sounds/${voice}.mp3`)) : null, takbirEnd: voice ? TAKBIR_END[voice] || 8 : 0,
+    speech: fileUrl(resPath(`speech/${key}.m4a`)), times: S.speakRepeats, volume: S.speakVolume });
+}
+
+// ---------------- events ----------------
+const STATE = path.join(DATA, 'state.json');
+let fired = new Set();
+try { fired = new Set(JSON.parse(fs.readFileSync(STATE, 'utf8')).fired || []); } catch (_) {}
+const dayKey = (d) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+
+function events(around) {
+  const inp = calcInput();
+  if (!inp) return [];
+  const out = [];
+  for (const off of [-1, 0, 1]) {
+    const d = new Date(around.getTime() + off * 86400000);
+    const ram = Calc.isRamadan(d, S.hijriOffset);
+    const t = Calc.compute({ ...inp, ramadan: ram }, d);
+    for (const p of Calc.PRAYERS) {
+      const pt = t[p]; if (!pt) continue;
+      const mode = modeOf(p);
+      if (mode !== 'off') out.push({ kind: 'adhan', p, time: pt, window: 120e3 });
+      if (p !== 'sunrise' && mode !== 'off' && S.preReminder > 0) out.push({ kind: 'pre', p, time: new Date(pt - S.preReminder * 60e3), window: 120e3 });
+      if (p !== 'sunrise' && (S.adhkarAfterPrayer || (S.khatmaOn && S.khatmaAfterPrayer))) out.push({ kind: 'after', p, time: new Date(+pt + 20 * 60e3), window: 30 * 60e3 });
+    }
+    if (S.adhkarMorning && t.sunrise && t.dhuhr) out.push({ kind: 'morningAdhkar', time: new Date(+t.sunrise + 15 * 60e3), window: t.dhuhr - t.sunrise - 20 * 60e3 });
+    if (S.adhkarEvening && t.asr && t.maghrib) out.push({ kind: 'eveningAdhkar', time: new Date(+t.asr + 30 * 60e3), window: Math.max(600e3, t.maghrib - t.asr - 30 * 60e3) });
+    if (S.jumuah && d.getDay() === 5) {
+      const k = new Date(d); k.setHours(10, 0, 0, 0);
+      out.push({ kind: 'kahf', time: k, window: 5 * 3600e3 });
+      if (t.dhuhr) out.push({ kind: 'khutbah', p: 'dhuhr', time: new Date(t.dhuhr - S.khutbahBefore * 60e3), window: 600e3 });
+    }
+    if (ram && t.fajr) out.push({ kind: 'suhoor', p: 'fajr', time: new Date(t.fajr - S.suhoorBefore * 60e3), window: 600e3 });
+  }
+  return out.map((e) => ({ ...e, key: `${dayKey(e.time)}|${e.kind}|${e.p || ''}` }));
+}
+
+function markPast() {
+  const n = Date.now();
+  for (const e of events(new Date())) {
+    if (e.time > n) continue;
+    if (['morningAdhkar', 'eveningAdhkar', 'kahf'].includes(e.kind) && n - e.time < e.window && !fired.has(e.key)) continue;
+    fired.add(e.key);
+  }
+}
+function saveFired() { try { fs.writeFileSync(STATE, JSON.stringify({ fired: [...fired].slice(-200) })); } catch (_) {} }
+
+async function fire(e) {
+  log(`event ${e.kind} ${e.p || ''}`);
+  if (e.kind === 'adhan') {
+    const meeting = S.meetingSilent && (await micInUse());
+    const mode = modeOf(e.p);
+    if (mode === 'adhan' && !meeting) await startAdhan(e.p);
+    else if (mode !== 'off' && S.speakOn && (!meeting || S.speakInMeeting)) announce(e.p);
+    showCard(e, meeting && mode === 'adhan');
+    return;
+  }
+  showCard(e, false);
+}
+
+let lastDay = '';
+function tick() {
+  const n = new Date();
+  for (const e of events(n)) {
+    if (e.time > n || fired.has(e.key)) continue;
+    fired.add(e.key); saveFired();
+    if (n - e.time > e.window) continue;
+    fire(e);
+  }
+  const dk = dayKey(n);
+  if (dk !== lastDay) { lastDay = dk; dailyBackup(); }
+  updateTray();
+  broadcast();
+}
+
+// ---------------- windows ----------------
+const APP = path.join(__dirname, 'app');
+const PRELOAD = path.join(__dirname, 'preload.js');
+const base = (extra) => ({ frame: false, transparent: true, resizable: false, show: false, backgroundColor: '#00000000', hasShadow: true,
+  webPreferences: { preload: PRELOAD, contextIsolation: true, nodeIntegration: false, sandbox: false }, ...extra });
+
+let tray = null, panel = null, panelPinned = false, panelPlacing = false;
+let desk = null, card = null, cardKind = null, settingsWin = null, adhkarWin = null;
+
+function trayIcon() {
+  const p = path.join(APP, 'img', 'tray.png');
+  const img = nativeImage.createFromPath(p);
+  return img.isEmpty() ? nativeImage.createEmpty() : img.resize({ width: 16, height: 16 });
+}
+function updateTray() {
+  if (!tray) return;
+  const inp = calcInput();
+  let tip = 'أذان';
+  if (playing) tip = `أذان ${Calc.AR[playing]} شغّال · اكبس لإيقافه`;
+  else if (inp) { const n = Calc.next(inp, new Date()); tip = `${Calc.AR[n.p]} ${Calc.countdown((n.t - Date.now()) / 1000, S.latinDigits)} · ${Calc.time(n.t, S.latinDigits, S.use24h)}`; }
+  tray.setToolTip(tip);
+}
+function trayMenu() {
+  return Menu.buildFromTemplate([
+    { label: 'فتح أذان', click: () => showPanel() },
+    { label: 'إيقاف الأذان', enabled: !!playing, click: () => stopAdhan() },
+    { type: 'separator' },
+    { label: 'أذكار الصباح', click: () => openAdhkar('morning') },
+    { label: 'أذكار المساء', click: () => openAdhkar('evening') },
+    { label: 'الإعدادات', click: () => openSettings() },
+    { label: S.deskOn ? 'إخفاء الويدجت' : 'إظهار الويدجت', click: () => update({ deskOn: !S.deskOn }) },
+    { type: 'separator' },
+    { label: 'إنهاء', click: () => { app.isQuitting = true; app.quit(); } },
+  ]);
+}
+
+function placePanel(h) {
+  const tb = tray ? tray.getBounds() : null;
+  const pt = tb && tb.width ? { x: tb.x + tb.width / 2, y: tb.y } : screen.getCursorScreenPoint();
+  const wa = screen.getDisplayNearestPoint(pt).workArea;
+  const W = 400, H = Math.min(h, wa.height - 24);
+  let x = Math.round(pt.x - W / 2);
+  x = Math.min(Math.max(x, wa.x + 12), wa.x + wa.width - W - 12);
+  const taskbarTop = pt.y > wa.y + wa.height / 2;
+  const y = taskbarTop ? wa.y + wa.height - H - 12 : wa.y + 12;
+  panelPlacing = true;
+  panel.setBounds({ x, y, width: W, height: H });
+  setTimeout(() => { panelPlacing = false; }, 300);
+}
+function showPanel() {
+  if (playing) { /* the panel shows the big stop banner */ }
+  if (!panel) {
+    panel = new BrowserWindow(base({ width: 400, height: 700, skipTaskbar: true, alwaysOnTop: true }));
+    panel.loadFile(path.join(APP, 'panel.html'));
+    panel.on('blur', () => { if (!panelPinned && !process.env.AZAN_PIN && panel && panel.isVisible()) panel.hide(); });
+    panel.on('move', () => { if (!panelPlacing && panel.isVisible()) panelPinned = true; });
+    panel.webContents.once('did-finish-load', () => { panelPinned = false; placePanel(panelHeight); panel.show(); panel.focus(); });
+    return;
+  }
+  if (panel.isVisible()) { hidePanel(); return; }
+  panelPinned = false;
+  placePanel(panelHeight);
+  panel.show(); panel.focus();
+  panel.webContents.send('shown');
+}
+function hidePanel() { if (panel && !panel.isDestroyed()) { panel.hide(); panelPinned = false; } }
+let panelHeight = 860;
+
+const DESK = { small: [230, 230], medium: [470, 240], large: [470, 480] };
+function applyDesk() {
+  if (!S.deskOn) { if (desk) { desk.destroy(); desk = null; } return; }
+  const [w, h] = DESK[S.deskSize] || DESK.medium;
+  if (!desk) {
+    const wa = screen.getPrimaryDisplay().workArea;
+    const x = S.deskX ?? wa.x + wa.width - w - 30, y = S.deskY ?? wa.y + 30;
+    desk = new BrowserWindow(base({ width: w, height: h, x, y, skipTaskbar: true, focusable: false, alwaysOnTop: S.deskOnTop }));
+    desk.loadFile(path.join(APP, 'widget.html'));
+    desk.once('ready-to-show', () => desk.showInactive());
+    desk.on('closed', () => { desk = null; });
+    // keep it on a visible screen
+    const vis = screen.getAllDisplays().some((d) => x < d.bounds.x + d.bounds.width && x + w > d.bounds.x && y < d.bounds.y + d.bounds.height && y + h > d.bounds.y);
+    if (!vis) desk.setPosition(wa.x + 30, wa.y + 30);
+  } else {
+    desk.setSize(w, h);
+    desk.setAlwaysOnTop(!!S.deskOnTop);
+  }
+}
+
+function showCard(e, meeting) {
+  closeCard(true);
+  cardKind = e.kind;
+  const wa = screen.getPrimaryDisplay().workArea;
+  const W = 400, H = 260;
+  card = new BrowserWindow(base({ width: W, height: H, x: wa.x + wa.width - W - 12, y: wa.y + wa.height - H - 12, skipTaskbar: true, focusable: false, alwaysOnTop: true }));
+  card.setAlwaysOnTop(true, 'pop-up-menu');
+  card.loadFile(path.join(APP, 'card.html'), { query: { e: JSON.stringify({ kind: e.kind, p: e.p || null, time: +e.time, meeting }) } });
+  card.once('ready-to-show', () => card && card.showInactive());
+  const auto = e.kind === 'adhan' ? (playing ? null : 120e3) : (e.kind === 'pre' || e.kind === 'khutbah') ? 45e3 : e.kind === 'after' ? 20 * 60e3 : 10 * 60e3;
+  if (auto) setTimeout(() => { if (cardKind === e.kind) closeCard(); }, auto);
+}
+function closeCard() { if (card && !card.isDestroyed()) card.destroy(); card = null; cardKind = null; }
+
+function openSettings() {
+  hidePanel();
+  if (settingsWin && !settingsWin.isDestroyed()) { settingsWin.show(); settingsWin.focus(); return; }
+  settingsWin = new BrowserWindow(base({ width: 620, height: 680, transparent: false, backgroundColor: '#0b1030', resizable: true, minWidth: 560, minHeight: 500 }));
+  settingsWin.loadFile(path.join(APP, 'settings.html'));
+  settingsWin.once('ready-to-show', () => settingsWin.show());
+}
+function openAdhkar(kind) {
+  hidePanel();
+  if (adhkarWin && !adhkarWin.isDestroyed()) { adhkarWin.webContents.send('adhkar-kind', kind); adhkarWin.show(); adhkarWin.focus(); return; }
+  adhkarWin = new BrowserWindow(base({ width: 520, height: 700, transparent: false, backgroundColor: '#0b1030', resizable: true, minWidth: 440, minHeight: 480 }));
+  adhkarWin.loadFile(path.join(APP, 'adhkar.html'), { query: { kind } });
+  adhkarWin.once('ready-to-show', () => adhkarWin.show());
+}
+
+// ---------------- IPC ----------------
+ipcMain.handle('state', () => publicState());
+ipcMain.handle('adhkar:data', () => { try { return JSON.parse(fs.readFileSync(resPath('adhkar.json'), 'utf8')); } catch (_) { return null; } });
+ipcMain.handle('res:url', (_e, rel) => fileUrl(resPath(rel)));
+ipcMain.handle('settings:set', (_e, patch) => { update(patch || {}); return publicState(); });
+ipcMain.handle('location:search', async (_e, q) => { try { return await searchCity(q); } catch (e) { return { error: e.message }; } });
+ipcMain.handle('location:auto', () => { autoLocate(); return true; });
+ipcMain.handle('check:run', () => { selfCheck(); broadcast(); return report; });
+ipcMain.on('adhan:stop', () => stopAdhan());
+ipcMain.on('adhan:test', () => { const inp = calcInput(); const p = inp ? Calc.next(inp, new Date(), false).p : 'maghrib'; startAdhan(p); showCard({ kind: 'adhan', p, time: new Date() }, false); });
+ipcMain.on('announce:test', () => { const inp = calcInput(); announce(inp ? Calc.next(inp, new Date(), false).p : 'fajr'); });
+ipcMain.on('voice:preview', (_e, id) => audio({ type: 'preview', src: fileUrl(resPath(`sounds/${id}.mp3`)), volume: S.volume }));
+ipcMain.on('audio:ended', (_e, what) => { if (what === 'adhan' && playing) adhanEnded(); });
+ipcMain.on('khatma:read', (_e, page) => { const read = Math.min(Calc.PAGES, Math.max(S.khatmaRead, page)); update({ khatmaRead: read, khatmaCount: S.khatmaCount + (read >= Calc.PAGES && S.khatmaRead < Calc.PAGES ? 1 : 0) }); });
+ipcMain.on('khatma:new', (_e, days) => update({ khatmaDays: days || S.khatmaDays, khatmaStart: Date.now(), khatmaRead: 0 }));
+ipcMain.on('open:url', (_e, url) => { if (/^https:\/\//.test(url)) shell.openExternal(url); });
+ipcMain.on('open:settings', () => openSettings());
+ipcMain.on('open:adhkar', (_e, kind) => openAdhkar(kind));
+ipcMain.on('panel:close', () => hidePanel());
+ipcMain.on('panel:height', (_e, h) => { panelHeight = Math.ceil(h); if (panel && panel.isVisible() && !panelPinned) placePanel(panelHeight); else if (panel) { const b = panel.getBounds(); panel.setBounds({ ...b, height: Math.min(panelHeight, screen.getDisplayMatching(b).workArea.height - 24) }); } });
+ipcMain.on('card:close', () => closeCard());
+ipcMain.on('win:close', (e) => { const w = BrowserWindow.fromWebContents(e.sender); if (w) w.close(); });
+ipcMain.on('desk:moveBy', (_e, dx, dy) => { if (!desk) return; const [x, y] = desk.getPosition(); desk.setPosition(Math.round(x + dx), Math.round(y + dy)); });
+ipcMain.on('desk:moved', () => { if (!desk) return; const [x, y] = desk.getPosition(); S.deskX = x; S.deskY = y; saveSettings(); });
+ipcMain.on('desk:click', () => { if (playing) stopAdhan(); else showPanel(); });
+ipcMain.on('desk:menu', () => {
+  if (!desk) return;
+  Menu.buildFromTemplate([
+    ...['small', 'medium', 'large'].map((s) => ({ label: `الحجم: ${{ small: 'صغير', medium: 'متوسط', large: 'كبير' }[s]}`, type: 'radio', checked: S.deskSize === s, click: () => update({ deskSize: s }) })),
+    { type: 'separator' },
+    { label: 'فوق كل النوافذ', type: 'checkbox', checked: !!S.deskOnTop, click: () => update({ deskOnTop: !S.deskOnTop }) },
+    { label: 'الإعدادات…', click: () => openSettings() },
+    { label: 'إخفاء الويدجت', click: () => update({ deskOn: false }) },
+  ]).popup({ window: desk });
+});
+
+// ---------------- start ----------------
+app.on('second-instance', () => showPanel());
+app.on('window-all-closed', (e) => { /* keep running in the tray */ });
+app.whenReady().then(() => {
+  if (process.platform === 'win32') app.setAppUserModelId('com.momen.azan.win');
+  selfCheck();
+  saveSettings();
+  audioWin = new BrowserWindow({ show: false, webPreferences: { preload: PRELOAD, contextIsolation: true, sandbox: false } });
+  audioWin.loadFile(path.join(APP, 'audio.html'));
+  tray = new Tray(trayIcon());
+  tray.on('click', () => showPanel());
+  tray.on('right-click', () => tray.popUpContextMenu(trayMenu()));
+  if (S.autoLocation || S.lat == null) autoLocate();
+  markPast();
+  applyDesk();
+  updateTray();
+  setInterval(tick, 5000);
+  setInterval(() => { if (S.autoLocation) autoLocate(); }, 3 * 3600e3);
+  log(`started ${app.getVersion()}`);
+  const show = process.env.AZAN_SHOW;
+  if (TEST && show) setTimeout(() => {
+    if (show === 'panel') showPanel();
+    else if (show === 'settings') openSettings();
+    else if (show === 'adhkar') openAdhkar('morning');
+    else if (show.startsWith('card:')) showCard({ kind: show.slice(5), p: process.env.AZAN_PRAYER || 'maghrib', time: new Date() }, !!process.env.AZAN_MEETING);
+    else if (show === 'playing') { startAdhan('maghrib'); setTimeout(showPanel, 600); }
+    else if (show === 'announce') announce('fajr');
+  }, 1500);
+});

@@ -1,0 +1,61 @@
+/* أذان - "ليل فاخر": كحلي وذهبي وكريمي، نفس هوية نسخة الماك */
+@font-face { font-family: 'Amiri'; src: url('fonts/Amiri-Regular.ttf'); font-weight: 400; }
+@font-face { font-family: 'Amiri'; src: url('fonts/Amiri-Bold.ttf'); font-weight: 700; }
+:root {
+  --top: #090e26; --bottom: #161c45;
+  --text: #f7ebcc; --sec: #ccbc99; --gold: #ebc266; --gold-soft: rgba(235, 194, 102, .2); --gold-line: rgba(235, 194, 102, .55);
+  --glass: rgba(255, 255, 255, .09); --glass-strong: rgba(255, 255, 255, .14); --ink: #10142f;
+  --pad: 22px; --radius: 18px;
+  --sans: 'Segoe UI', 'Segoe UI Variable', Tahoma, 'Noto Sans Arabic', sans-serif;
+  --naskh: 'Amiri', 'Traditional Arabic', 'Segoe UI', serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: transparent; color: var(--text); font-family: var(--sans); direction: rtl; user-select: none; overflow: hidden; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+.naskh { font-family: var(--naskh); }
+.gold { color: var(--gold); }
+.sec { color: var(--sec); }
+.num { font-variant-numeric: tabular-nums; }
+
+/* night sky */
+.sky { position: absolute; inset: 0; overflow: hidden; background: linear-gradient(225deg, var(--top), var(--bottom)); border-radius: inherit; }
+.sky::after { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 8% 6%, rgba(235, 194, 102, .13), transparent 45%), linear-gradient(transparent 55%, rgba(0, 0, 0, .18)); }
+.star { position: absolute; border-radius: 50%; background: #fff; animation: twinkle var(--d) ease-in-out var(--o) infinite alternate; will-change: opacity; }
+.star.g { background: #ffdb8c; }
+@keyframes twinkle { from { opacity: .15; } to { opacity: .95; } }
+.moon { position: absolute; width: 26px; height: 26px; border-radius: 50%; box-shadow: 7px -3px 0 0 #f7d480; transform: rotate(-20deg); filter: drop-shadow(0 0 6px rgba(255, 216, 128, .8)); }
+.moon-glow { position: absolute; width: 120px; height: 120px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 216, 128, .28), transparent 65%); animation: breathe 4s ease-in-out infinite alternate; }
+@keyframes breathe { from { transform: scale(.9); } to { transform: scale(1.12); } }
+.meteor { position: absolute; top: 8%; left: 35%; width: 70px; height: 1.5px; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .9)); transform: rotate(22deg); opacity: 0; animation: meteor 14s linear 6s infinite; }
+@keyframes meteor { 0% { opacity: 0; translate: 0 0; } 2% { opacity: .9; } 6.5% { opacity: 0; translate: 220px 90px; } 100% { opacity: 0; translate: 220px 90px; } }
+
+/* frame */
+.frame { position: relative; border-radius: 26px; border: 1px solid var(--gold-line); overflow: hidden; }
+.content { position: relative; z-index: 1; }
+
+/* glass cards */
+.glass { background: var(--glass); border: 1px solid rgba(255, 255, 255, .16); border-radius: var(--radius); box-shadow: 0 4px 14px rgba(0, 0, 0, .22); }
+.card { padding: 16px; }
+
+/* gold bar */
+.bar { height: 6px; border-radius: 6px; background: rgba(247, 235, 204, .14); overflow: hidden; }
+.bar > i { display: block; height: 100%; border-radius: 6px; background: linear-gradient(90deg, rgba(235, 194, 102, .7), var(--gold)); box-shadow: 0 0 6px rgba(235, 194, 102, .6); }
+
+/* pills and buttons */
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 13px; border-radius: 999px; font-size: 13px; font-weight: 600; background: rgba(247, 235, 204, .1); }
+.pill.gold-fill { background: var(--gold); color: var(--ink); }
+.pill:hover { filter: brightness(1.12); }
+.icon-btn { width: 28px; height: 28px; border-radius: 50%; display: inline-grid; place-items: center; background: rgba(247, 235, 204, .12); border: 1px solid rgba(235, 194, 102, .4); font-size: 12px; }
+
+/* tabs */
+.tabs { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+.tab { padding: 7px 13px; border-radius: 999px; font-size: 13px; border: 1px solid rgba(235, 194, 102, .35); background: rgba(247, 235, 204, .08); display: inline-flex; gap: 6px; align-items: center; }
+.tab.on { background: var(--gold); color: var(--ink); border-color: transparent; font-weight: 700; }
+
+/* simple icons (no external fonts) */
+.i { display: inline-block; width: 1.1em; text-align: center; }
+
+/* drag */
+.drag { -webkit-app-region: drag; }
+.nodrag, button, input, select, a { -webkit-app-region: no-drag; }
+::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-thumb { background: rgba(235, 194, 102, .35); border-radius: 8px; }

@@ -1,0 +1,8 @@
+._*
+.DS_Store
+node_modules/
+dist/
+res/
+build/icon.png
+app/fonts/
+app/img/
