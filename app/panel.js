@@ -1,6 +1,9 @@
 // Main window: next prayer, today's times, khatma, adhkar. Same layout as the Mac panel.
 document.head.append(h('style', {}, `
   body.panel { padding: 0; }
+  /* short screens: the window is capped to the screen height, so the content scrolls instead of being cut */
+  html, body.panel { height: 100%; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
+  body.panel::-webkit-scrollbar { display: none; }
   #root { width: 400px; }
   .wrap { padding: var(--pad); display: flex; flex-direction: column; gap: 14px; }
   .top { display: flex; align-items: center; gap: 8px; }
