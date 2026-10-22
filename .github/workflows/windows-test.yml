@@ -1,0 +1,104 @@
+# Installs the published Windows installer on a real Windows machine and checks it:
+# self-check of all files, microphone registry read, media (PowerShell) script, prayer times,
+# self-repair of damaged files, and a desktop screenshot. Runs on every new release.
+name: Windows test
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to test (empty = latest)"
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Download the installer from the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.event.release.tag_name || inputs.tag }}"
+          if (-not $tag) { $tag = gh release view -R $env:GITHUB_REPOSITORY --json tagName -q .tagName }
+          Write-Host "Testing $tag"
+          gh release download $tag -R $env:GITHUB_REPOSITORY -p "Azan-Setup-*.exe" -D dl
+          Get-ChildItem dl
+
+      - name: Install silently (like a user, per-user install)
+        shell: pwsh
+        run: |
+          $exe = (Get-ChildItem dl\Azan-Setup-*.exe).FullName
+          Start-Process $exe -ArgumentList '/S' -Wait
+          $app = "$env:LOCALAPPDATA\Programs\Azan\Azan.exe"
+          if (!(Test-Path $app)) {
+            Get-ChildItem "$env:LOCALAPPDATA\Programs" -Recurse -Filter Azan.exe -ErrorAction SilentlyContinue | Select-Object -First 3
+            throw "Azan.exe not found after install"
+          }
+          "APP=$app" >> $env:GITHUB_ENV
+          Get-ChildItem (Join-Path (Split-Path $app) 'resources\res') -Recurse | Measure-Object | Select-Object Count
+
+      - name: Run the app and its self test (with a screenshot)
+        shell: pwsh
+        run: |
+          $d = "$env:RUNNER_TEMP\azan-data"
+          New-Item -ItemType Directory -Force $d | Out-Null
+          '{"autoLocation":false,"lat":30.1061,"lon":31.3494,"placeName":"Cairo","countryCode":"EG"}' | Set-Content "$d\settings.json" -Encoding utf8
+          $env:AZAN_DATA = $d
+          $env:AZAN_WINTEST = 'show'
+          $p = Start-Process $env:APP -PassThru
+          Start-Sleep -Seconds 13
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          $bmp.Save("$env:RUNNER_TEMP\desktop.png")
+          Wait-Process -Id $p.Id -Timeout 45 -ErrorAction SilentlyContinue
+          $log = Get-Content "$d\azan.log" -Raw -Encoding utf8
+          Write-Host $log
+          if ($log -notmatch 'wintest: selfcheck checked=18 problems=none') { throw 'self-check failed' }
+          if ($log -notmatch 'wintest: media_script_ok') { throw 'media (PowerShell) script failed' }
+          if ($log -notmatch 'wintest: mic_in_use=') { throw 'microphone check failed' }
+          if ($log -notmatch 'wintest: res sounds/makkah.mp3 -> ok') { throw 'resources missing' }
+          if ($log -notmatch 'wintest: done') { throw 'app did not finish the test' }
+
+      - name: Damage files and check the self-repair
+        shell: pwsh
+        run: |
+          $res = Join-Path (Split-Path $env:APP) 'resources\res'
+          Set-Content "$res\sounds\aqsa.mp3" 'garbage'
+          Remove-Item "$res\speech\fajr.m4a"
+          $d = "$env:RUNNER_TEMP\azan-data"
+          $env:AZAN_DATA = $d
+          $env:AZAN_WINTEST = '1'
+          $p = Start-Process $env:APP -PassThru
+          Wait-Process -Id $p.Id -Timeout 60
+          $log = Get-Content "$d\azan.log" -Raw -Encoding utf8
+          ($log -split "`n") | Select-String 'selfcheck' | Select-Object -Last 1
+          if ($log -notmatch 'repaired=sounds/aqsa.mp3,speech/fajr.m4a') { throw 'self-repair failed' }
+          if (!(Test-Path "$res\speech\fajr.m4a")) { throw 'deleted file was not restored' }
+
+      - name: Uninstall
+        if: always()
+        shell: pwsh
+        run: |
+          if ($env:APP) {
+            $u = Get-ChildItem (Split-Path $env:APP) -Filter 'Uninstall*.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($u) { Start-Process $u.FullName -ArgumentList '/S' -Wait }
+          }
+
+      - name: Keep the screenshot and the log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-test
+          path: |
+            ${{ runner.temp }}/desktop.png
+            ${{ runner.temp }}/azan-data/azan.log

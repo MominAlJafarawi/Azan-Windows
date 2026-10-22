@@ -398,7 +398,7 @@ function showPanel() {
   if (!panel) {
     panel = new BrowserWindow(base({ width: 400, height: 700, skipTaskbar: true, alwaysOnTop: true }));
     panel.loadFile(path.join(APP, 'panel.html'));
-    panel.on('blur', () => { if (!panelPinned && !process.env.AZAN_PIN && panel && panel.isVisible()) panel.hide(); });
+    panel.on('blur', () => { if (!panelPinned && !process.env.AZAN_PIN && !process.env.AZAN_WINTEST && panel && panel.isVisible()) panel.hide(); });
     panel.on('move', () => { if (!panelPlacing && panel.isVisible()) panelPinned = true; });
     panel.webContents.once('did-finish-load', () => { panelPinned = false; placePanel(panelHeight); panel.show(); panel.focus(); });
     return;
@@ -545,6 +545,21 @@ app.whenReady().then(() => {
   setInterval(tick, 5000);
   setInterval(() => { if (S.autoLocation) autoLocate(); }, 3 * 3600e3);
   log(`started ${app.getVersion()}`);
+  // automatic test on a real Windows machine (GitHub Actions): logs results, then quits
+  if (process.env.AZAN_WINTEST) setTimeout(async () => {
+    const lines = [];
+    lines.push(`wintest: platform=${process.platform} version=${app.getVersion()} packaged=${app.isPackaged}`);
+    lines.push(`wintest: selfcheck checked=${report.checked} problems=${report.problems.join(',') || 'none'} repaired=${report.repaired.join(',') || 'none'}`);
+    lines.push(`wintest: tray=${!!tray} desk=${!!desk} audioWin=${!!audioWin}`);
+    try { lines.push(`wintest: mic_in_use=${await micInUse()}`); } catch (e) { lines.push('wintest: mic_error ' + e.message); }
+    try { const out = await runPS(PS_MEDIA('pause')); lines.push(`wintest: media_script_ok paused=[${out.trim()}]`); } catch (e) { lines.push('wintest: media_error ' + e.message); }
+    const inp = calcInput();
+    if (inp) { const t = Calc.compute(inp, new Date()); lines.push('wintest: times ' + Calc.PRAYERS.map((p) => `${p}=${t[p] ? t[p].toISOString().slice(11, 16) : '-'}`).join(' ')); }
+    for (const rel of ['sounds/makkah.mp3', 'speech/fajr.m4a', 'adhkar.json']) lines.push(`wintest: res ${rel} -> ${resPath(rel) ? 'ok' : 'MISSING'}`);
+    lines.forEach(log);
+    if (process.env.AZAN_WINTEST === 'show') { showPanel(); setTimeout(() => { log('wintest: done'); app.exit(0); }, 12000); }
+    else { log('wintest: done'); app.exit(0); }
+  }, 6000);
   const show = process.env.AZAN_SHOW;
   if (TEST && show) setTimeout(() => {
     if (show === 'panel') showPanel();
