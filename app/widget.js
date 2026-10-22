@@ -1,7 +1,8 @@
 // Floating desktop widget: drag to move, click to open the app (or stop the adhan), right-click for options.
 document.head.append(h('style', {}, `
-  html, body, #root { width: 100%; height: 100%; }
-  .frame { position: absolute; inset: 0; border-radius: 28px; cursor: default; }
+  html, body { width: 100%; height: 100%; }
+  #root { position: relative; }
+  .frame { position: absolute; left: 0; top: 0; border-radius: 28px; cursor: default; }
   .content { position: absolute; inset: 0; padding: var(--pad); display: flex; flex-direction: column; gap: 12px; }
   .main { display: flex; gap: 14px; flex: 1; min-height: 0; }
   .nb { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
@@ -31,11 +32,23 @@ const frame = h('div', { class: 'frame' });
 const content = h('div', { class: 'content' });
 frame.append(content);
 root.append(frame);
-setTimeout(() => mountSky(frame, { moonX: 36, moonY: 34 }), 50);
+const BASE = { small: [230, 230], medium: [470, 240], large: [470, 480] };
+let skyFor = null;
+function sizeFrame(s) {
+  const [w, ht] = BASE[s.deskSize] || BASE.medium;
+  frame.style.width = w + 'px'; frame.style.height = ht + 'px';
+  applyZoom(s.deskScale);
+  if (skyFor !== s.deskSize) {
+    skyFor = s.deskSize;
+    frame.querySelector('.sky')?.remove();
+    requestAnimationFrame(() => mountSky(frame, { moonX: s.deskSize === 'small' ? 30 : Math.round(w * 0.56), moonY: 30 }));
+  }
+}
 
 function render() {
   if (!STATE) return;
   const s = S(), now = new Date(), inp = input();
+  sizeFrame(s);
   content.replaceChildren();
   if (!inp) { content.append(h('div', { class: 'naskh', style: { margin: 'auto', fontSize: '17px' } }, 'افتح الإعدادات واختار مدينتك')); return; }
   const ram = Calc.isRamadan(now, s.hijriOffset);
@@ -67,6 +80,7 @@ onState(render);
 
 // drag = move, still click = open, right click = menu
 let down = null, moved = false;
+enableEdgeResize(document.body);
 frame.addEventListener('mousedown', (e) => { if (e.button !== 0) return; down = { x: e.screenX, y: e.screenY }; moved = false; });
 window.addEventListener('mousemove', (e) => {
   if (!down) return;

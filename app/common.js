@@ -55,3 +55,34 @@ function progress(inp, now) {
 }
 const isToday = (d) => d.toDateString() === new Date().toDateString();
 const bar = (v) => h('div', { class: 'bar' }, h('i', { style: { width: Math.max(2, v * 100) + '%' } }));
+
+/** whole-window zoom (text and numbers scale together) */
+function applyZoom(z) { document.documentElement.style.zoom = String(z || 1); }
+window.azan.on('zoom', applyZoom);
+
+/** edge handles: drag the left/right/bottom edge or a bottom corner to resize proportionally */
+function enableEdgeResize(host) {
+  const st = document.createElement('style');
+  st.textContent = `.edge{position:absolute;z-index:50;-webkit-app-region:no-drag}
+   .edge.l{left:0;top:0;bottom:0;width:8px;cursor:ew-resize}.edge.r{right:0;top:0;bottom:0;width:8px;cursor:ew-resize}
+   .edge.b{left:8px;right:8px;bottom:0;height:8px;cursor:ns-resize}
+   .edge.bl{left:0;bottom:0;width:16px;height:16px;cursor:nesw-resize}.edge.br{right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize}`;
+  document.head.append(st);
+  for (const k of ['l', 'r', 'b', 'bl', 'br']) {
+    const e = h('div', { class: 'edge ' + k });
+    e.addEventListener('mousedown', (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      const sx = ev.screenX, sy = ev.screenY, w0 = window.outerWidth, aspect = window.outerWidth / window.outerHeight;
+      const fromLeft = k === 'l' || k === 'bl';
+      const f = (x, y) => {
+        const dx = x - sx, dy = y - sy;
+        const g = k === 'r' ? dx : k === 'l' ? -dx : k === 'b' ? dy * aspect : k === 'br' ? Math.max(dx, dy * aspect) : Math.max(-dx, dy * aspect);
+        return Math.max(0.2, (w0 + g) / w0);
+      };
+      const move = (m) => window.azan.send('resize:drag', { factor: f(m.screenX, m.screenY), done: false, fromLeft });
+      const up = (m) => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); window.azan.send('resize:drag', { factor: f(m.screenX, m.screenY), done: true, fromLeft }); };
+      window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+    });
+    host.append(e);
+  }
+}

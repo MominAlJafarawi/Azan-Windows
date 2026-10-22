@@ -41,7 +41,7 @@ const DEFAULTS = {
   modes: {}, voice: 'makkah', fajrVoice: 'makkah_fajr', volume: 0.8, preReminder: 10, smartPause: true, meetingSilent: true,
   khatmaOn: true, khatmaDays: 30, khatmaStart: Date.now(), khatmaRead: 0, khatmaCount: 0, khatmaAfterPrayer: true,
   adhkarMorning: true, adhkarEvening: true, adhkarAfterPrayer: true, jumuah: true, khutbahBefore: 30, suhoorBefore: 45,
-  launchAtLogin: true, deskOn: true, deskSize: 'medium', deskOnTop: false, deskX: null, deskY: null,
+  launchAtLogin: true, deskOn: true, deskSize: 'medium', deskOnTop: false, deskX: null, deskY: null, deskScale: 1, panelScale: 1,
   speakOn: true, speakRepeats: 2, speakInMeeting: true, speakVolume: 0.6, speakTakbir: true,
 };
 const SETTINGS = path.join(DATA, 'settings.json');
@@ -57,6 +57,8 @@ function sanitize(raw) {
       if (def === null || typeof v === typeof def || (Array.isArray(def) && Array.isArray(v))) s[k] = v;
     }
   }
+  s.deskScale = Math.min(2, Math.max(0.6, Number(s.deskScale) || 1));
+  s.panelScale = Math.min(1.5, Math.max(0.8, Number(s.panelScale) || 1));
   return s;
 }
 function loadSettings() {
@@ -164,7 +166,8 @@ function update(patch) {
   if (JSON.stringify(S) === before) return;
   saveSettings();
   if ('launchAtLogin' in patch && !TEST && app.isPackaged) app.setLoginItemSettings({ openAtLogin: !!S.launchAtLogin });
-  if ('deskOn' in patch || 'deskSize' in patch || 'deskOnTop' in patch) applyDesk();
+  if ('deskOn' in patch || 'deskSize' in patch || 'deskOnTop' in patch || 'deskScale' in patch) applyDesk();
+  if ('panelScale' in patch && panel && panel.isVisible()) placePanel(panelHeight, true);
   if ('autoLocation' in patch && S.autoLocation) autoLocate();
   broadcast();
 }
@@ -366,11 +369,22 @@ function trayMenu() {
   ]);
 }
 
-function placePanel(h) {
+function placePanel(h, keepTop) {
+  const sc = S.panelScale;
+  if (keepTop && panel) {
+    // resize in place: keep the top edge and the centre
+    const b = panel.getBounds(), wa = screen.getDisplayMatching(b).workArea;
+    const W = Math.round(400 * sc), H = Math.round(Math.min(h * sc, wa.height - 24));
+    let x = Math.round(b.x + b.width / 2 - W / 2);
+    x = Math.min(Math.max(x, wa.x + 12), wa.x + wa.width - W - 12);
+    panelPlacing = true; panel.setBounds({ x, y: b.y, width: W, height: H });
+    setTimeout(() => { panelPlacing = false; }, 300);
+    return;
+  }
   const tb = tray ? tray.getBounds() : null;
   const pt = tb && tb.width ? { x: tb.x + tb.width / 2, y: tb.y } : screen.getCursorScreenPoint();
   const wa = screen.getDisplayNearestPoint(pt).workArea;
-  const W = 400, H = Math.min(h, wa.height - 24);
+  const W = Math.round(400 * sc), H = Math.round(Math.min(h * sc, wa.height - 24));
   let x = Math.round(pt.x - W / 2);
   x = Math.min(Math.max(x, wa.x + 12), wa.x + wa.width - W - 12);
   const taskbarTop = pt.y > wa.y + wa.height / 2;
@@ -401,7 +415,8 @@ let panelHeight = 860;
 const DESK = { small: [230, 230], medium: [470, 240], large: [470, 480] };
 function applyDesk() {
   if (!S.deskOn) { if (desk) { desk.destroy(); desk = null; } return; }
-  const [w, h] = DESK[S.deskSize] || DESK.medium;
+  const [bw, bh] = DESK[S.deskSize] || DESK.medium;
+  const w = Math.round(bw * S.deskScale), h = Math.round(bh * S.deskScale);
   if (!desk) {
     const wa = screen.getPrimaryDisplay().workArea;
     const x = S.deskX ?? wa.x + wa.width - w - 30, y = S.deskY ?? wa.y + 30;
@@ -466,7 +481,29 @@ ipcMain.on('open:url', (_e, url) => { if (/^https:\/\//.test(url)) shell.openExt
 ipcMain.on('open:settings', () => openSettings());
 ipcMain.on('open:adhkar', (_e, kind) => openAdhkar(kind));
 ipcMain.on('panel:close', () => hidePanel());
-ipcMain.on('panel:height', (_e, h) => { panelHeight = Math.ceil(h); if (panel && panel.isVisible() && !panelPinned) placePanel(panelHeight); else if (panel) { const b = panel.getBounds(); panel.setBounds({ ...b, height: Math.min(panelHeight, screen.getDisplayMatching(b).workArea.height - 24) }); } });
+// the panel reports its natural (unscaled) height; the window is that times panelScale
+ipcMain.on('panel:height', (_e, h) => { panelHeight = Math.ceil(h); if (panel && panel.isVisible() && !panelPinned) placePanel(panelHeight); else if (panel) placePanel(panelHeight, true); });
+// edge drag on the panel or the widget: everything scales together
+let dragStart = null;
+ipcMain.on('resize:drag', (e, { factor, done, fromLeft }) => {
+  const w = BrowserWindow.fromWebContents(e.sender); if (!w) return;
+  const isDesk = w === desk;
+  const b = w.getBounds();
+  if (!dragStart) dragStart = { scale: isDesk ? S.deskScale : S.panelScale, x: b.x, right: b.x + b.width, y: b.y };
+  const [lo, hi] = isDesk ? [0.6, 2] : [0.8, 1.5];
+  const sc = Math.min(hi, Math.max(lo, dragStart.scale * factor));
+  let W, H;
+  if (isDesk) { const [bw, bh] = DESK[S.deskSize] || DESK.medium; W = Math.round(bw * sc); H = Math.round(bh * sc); }
+  else { W = Math.round(400 * sc); H = Math.round(Math.min(panelHeight * sc, screen.getDisplayMatching(b).workArea.height - 24)); panelPlacing = true; }
+  w.setBounds({ x: fromLeft ? dragStart.right - W : dragStart.x, y: dragStart.y, width: W, height: H });
+  w.webContents.send('zoom', sc);
+  if (done) {
+    dragStart = null;
+    const r = Math.round(sc * 100) / 100;
+    if (isDesk) { const [x, y] = desk.getPosition(); S.deskX = x; S.deskY = y; update({ deskScale: r }); }
+    else { panelPinned = true; setTimeout(() => { panelPlacing = false; }, 300); update({ panelScale: r }); }
+  }
+});
 ipcMain.on('card:close', () => closeCard());
 ipcMain.on('win:close', (e) => { const w = BrowserWindow.fromWebContents(e.sender); if (w) w.close(); });
 ipcMain.on('desk:moveBy', (_e, dx, dy) => { if (!desk) return; const [x, y] = desk.getPosition(); desk.setPosition(Math.round(x + dx), Math.round(y + dy)); });
@@ -476,6 +513,12 @@ ipcMain.on('desk:menu', () => {
   if (!desk) return;
   Menu.buildFromTemplate([
     ...['small', 'medium', 'large'].map((s) => ({ label: `الحجم: ${{ small: 'صغير', medium: 'متوسط', large: 'كبير' }[s]}`, type: 'radio', checked: S.deskSize === s, click: () => update({ deskSize: s }) })),
+    { type: 'separator' },
+    { label: 'تكبير', click: () => update({ deskScale: Math.min(2, Math.round((S.deskScale + 0.1) * 10) / 10) }) },
+    { label: 'تصغير', click: () => update({ deskScale: Math.max(0.6, Math.round((S.deskScale - 0.1) * 10) / 10) }) },
+    { label: 'الحجم الأصلي', click: () => update({ deskScale: 1 }) },
+    { type: 'separator' },
+    { label: S.use24h ? 'الساعة: ٢٤ (اكبس لـ١٢)' : 'الساعة: ١٢ (اكبس لـ٢٤)', click: () => update({ use24h: !S.use24h }) },
     { type: 'separator' },
     { label: 'فوق كل النوافذ', type: 'checkbox', checked: !!S.deskOnTop, click: () => update({ deskOnTop: !S.deskOnTop }) },
     { label: 'الإعدادات…', click: () => openSettings() },

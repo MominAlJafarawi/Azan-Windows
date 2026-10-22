@@ -35,8 +35,9 @@ document.head.append(h('style', {}, `
   .adhkar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
   .adhkar button { padding: 12px 0; display: flex; flex-direction: column; align-items: center; gap: 4px; border-radius: 16px; }
   .adhkar .em { font-size: 18px; } .adhkar .t { font-family: var(--naskh); font-weight: 700; font-size: 16px; }
-  .foot { display: flex; align-items: center; color: var(--sec); font-size: 13px; padding: 2px 4px 0; }
-  .foot .d { margin: 0 auto; }
+  .foot { display: flex; align-items: center; gap: 6px; color: var(--sec); font-size: 13px; padding: 2px 4px 0; }
+  .foot .d { margin: 0 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fb { padding: 4px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; background: rgba(247,235,204,.1); border: 1px solid rgba(235,194,102,.35); white-space: nowrap; }
   .ram h3 { font-family: var(--naskh); color: var(--gold); font-size: 20px; }
   .ram .stats { display: flex; gap: 24px; margin-top: 8px; } .ram small { color: var(--sec); font-size: 12px; } .ram b { display: block; font-size: 20px; }
   .noloc { padding: 40px 30px; text-align: center; display: flex; flex-direction: column; gap: 12px; align-items: center; }
@@ -138,9 +139,13 @@ function render() {
   wrap.append(h('div', { class: 'adhkar' },
     [['morning', '🌅', 'الصباح'], ['evening', '🌇', 'المساء'], ['after', '🤲', 'بعد الصلاة']].map(([k, em, t2]) =>
       h('button', { class: 'glass', onclick: () => window.azan.send('open:adhkar', k) }, h('span', { class: 'em' }, em), h('span', { class: 't' }, t2)))));
+  const zoomBy = (d) => window.azan.set({ panelScale: Math.min(1.5, Math.max(0.8, Math.round((s.panelScale + d) * 10) / 10)) });
   wrap.append(h('div', { class: 'foot' },
-    h('button', { onclick: () => window.azan.send('open:settings') }, '⚙ الإعدادات'),
+    h('button', { title: 'الإعدادات', style: { fontSize: '16px' }, onclick: () => window.azan.send('open:settings') }, '⚙'),
     h('span', { class: 'd' }, Calc.gregorian(now, latin())),
+    h('button', { class: 'fb', title: 'الساعة: ٢٤ أو ١٢', onclick: () => window.azan.set({ use24h: !s.use24h }) }, s.use24h ? '٢٤س' : '١٢س'),
+    h('button', { class: 'fb', title: 'تصغير النافذة', onclick: () => zoomBy(-0.1) }, 'A−'),
+    h('button', { class: 'fb', title: 'تكبير النافذة', onclick: () => zoomBy(0.1) }, 'A+'),
     h('button', { title: 'إغلاق النافذة', onclick: () => window.azan.send('panel:close') }, '⏻')));
   content.append(wrap);
   sendHeight();
@@ -149,10 +154,11 @@ function render() {
 let lastH = 0;
 function sendHeight() {
   requestAnimationFrame(() => {
-    const ht = frame.getBoundingClientRect().height;
+    const ht = frame.offsetHeight;   // natural height, before zoom
     if (Math.abs(ht - lastH) > 1) { lastH = ht; window.azan.send('panel:height', ht); }
     if (!skyMounted && ht > 100) { skyMounted = true; mountSky(frame, { moonX: 40, moonY: 105 }); }
   });
 }
-onState(render);
+onState((s) => { applyZoom(s.settings.panelScale); render(); });
 window.azan.on('shown', render);
+enableEdgeResize(document.body);

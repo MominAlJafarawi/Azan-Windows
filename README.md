@@ -1,9 +1,9 @@
 # أذان للويندوز
 
 ## ⬇️ التنزيل
-- **[Azan-Setup-1.1.0.exe](https://github.com/MomenJafarawi/Azan-Windows/releases/download/v1.1.0/Azan-Setup-1.1.0.exe)**: ملف التثبيت (ويندوز 10/11، 64 بت)
-- [Azan-1.1.0-x64.zip](https://github.com/MomenJafarawi/Azan-Windows/releases/download/v1.1.0/Azan-1.1.0-x64.zip): نسخة بدون تثبيت
-- [طريقة التثبيت بالعربي](https://github.com/MomenJafarawi/Azan-Windows/releases/download/v1.1.0/Install-Guide-Arabic.txt)
+- **[Azan-Setup-1.2.0.exe](https://github.com/MomenJafarawi/Azan-Windows/releases/download/v1.2.0/Azan-Setup-1.2.0.exe)**: ملف التثبيت (ويندوز 10/11، 64 بت)
+- [Azan-1.2.0-x64.zip](https://github.com/MomenJafarawi/Azan-Windows/releases/download/v1.2.0/Azan-1.2.0-x64.zip): نسخة بدون تثبيت
+- [طريقة التثبيت بالعربي](https://github.com/MomenJafarawi/Azan-Windows/releases/download/v1.2.0/Install-Guide-Arabic.txt)
 
 ملفات التثبيت موجودة بقسم **Releases** (على يمين صفحة المستودع)، مش مع ملفات الكود، لأن GitHub ما بيقبل ملفات أكبر من 100 ميجا مع الكود.
 
