@@ -1,16 +1,18 @@
+> **English:** Azan is a prayer times and adhan app for Windows 10 and 11 that runs quietly next to the clock. It calculates accurate prayer times (matching AlAdhan within one minute), pauses Spotify or YouTube during the adhan, switches to a silent spoken alert when your microphone is in use (Zoom, Teams, calls), and includes an animated desktop widget, a Quran reading plan split across the five prayers, and morning and evening adhkar. No ads, no account, no tracking. Also available for [macOS](https://github.com/MominAlJafarawi/Azan).
+
 <div dir="rtl">
 
 # أذان 🌙 — مواقيت الصلاة لويندوز
 
 **برنامج مواقيت صلاة وأذان يعمل بهدوء بجانب الساعة، بتصميم "ليل فاخر" وويدجت متحرك على سطح المكتب، ويفهم يومك: يوقف الموسيقى وقت الأذان، ويعرف إذا كنت في اجتماع فينبّهك بصمت.**
 
-نسخة الماك بنفس الميزات والشكل: [Azan](https://github.com/MomenJafarawi/Azan)
+نسخة الماك بنفس الميزات والشكل: [Azan](https://github.com/MominAlJafarawi/Azan)
 
 ## ⬇️ التنزيل
 
-- **[Azan-Setup-1.2.0.exe](https://github.com/MomenJafarawi/Azan-Windows/releases/download/v1.2.0/Azan-Setup-1.2.0.exe)**: ملف التثبيت (حوالي 119 ميجا)
-- [Azan-1.2.0-x64.zip](https://github.com/MomenJafarawi/Azan-Windows/releases/download/v1.2.0/Azan-1.2.0-x64.zip): نسخة تعمل بلا تثبيت
-- [طريقة التثبيت بالعربي](https://github.com/MomenJafarawi/Azan-Windows/releases/download/v1.2.0/Install-Guide-Arabic.txt)
+- **[Azan-Setup-1.2.0.exe](https://github.com/MominAlJafarawi/Azan-Windows/releases/download/v1.2.0/Azan-Setup-1.2.0.exe)**: ملف التثبيت (حوالي 119 ميجا)
+- [Azan-1.2.0-x64.zip](https://github.com/MominAlJafarawi/Azan-Windows/releases/download/v1.2.0/Azan-1.2.0-x64.zip): نسخة تعمل بلا تثبيت
+- [طريقة التثبيت بالعربي](https://github.com/MominAlJafarawi/Azan-Windows/releases/download/v1.2.0/Install-Guide-Arabic.txt)
 - يعمل على **ويندوز 10 و11 (64 بت)**. كل ما يحتاجه البرنامج موجود داخله، ولا يحتاج أي برنامج آخر.
 
 > عند التثبيت قد تظهر شاشة زرقاء من ويندوز لأن البرنامج غير موقّع من مايكروسوفت: اضغط **More info** ثم **Run anyway**.
@@ -54,8 +56,12 @@
 ./build.sh run    # تشغيل للتجربة على الماك بمجلد بيانات منفصل
 ```
 
+## 📄 الرخصة
+
+الكود تحت رخصة [MIT](LICENSE). الأصوات والخطوط والنصوص المضمّنة تبقى تحت رخص مصادرها المذكورة في مستودع [Azan](https://github.com/MominAlJafarawi/Azan).
+
 ---
 
-تطوير: **مؤمن الجعفراوي**
+تطوير: **مؤمن الجعفراوي** · [Momin AlJafarawi](https://github.com/MominAlJafarawi)
 
 </div>
