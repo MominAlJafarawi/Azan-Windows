@@ -20,6 +20,14 @@ for (const [tz, lat, lon, m, day, ref] of cases) {
   const diff = Math.max(...out.split(' ').map((v, i) => { const a = v.split(':').map(Number), b = ref.split(' ')[i].split(':').map(Number); return Math.abs(a[0] * 60 + a[1] - b[0] * 60 - b[1]); }));
   check(diff <= 1, `times ${tz} ${day} (max diff ${diff} min)`);
 }
+{ // missed-adhan card after sleep (Cairo)
+  const inp = { lat: 30.0444, lon: 31.2357, method: 'egyptian', school: 'shafi', highLat: 'seventh', offsets: [0, 0, 0, 0, 0, 0] };
+  const t = C.compute(inp, new Date());
+  check(+C.missedUntil(inp, 'asr', t.asr, new Date(+t.asr + 1800e3)) === +t.maghrib, 'missed asr card while asr time runs');
+  check(C.missedUntil(inp, 'asr', t.asr, new Date(+t.maghrib + 60e3)) === null, 'no missed card after asr time ended');
+  check(+C.missedUntil(inp, 'fajr', t.fajr, new Date(+t.fajr + 600e3)) === +t.sunrise, 'missed fajr ends at sunrise');
+  check(C.missedUntil(inp, 'sunrise', t.sunrise, new Date(+t.sunrise + 600e3)) === null, 'no missed card for sunrise');
+}
 check(C.methodForCountry('EG') === 'egyptian' && C.methodForCountry('DE') === 'mwl', 'method by country');
 const k = C.khatma(30, Date.now() - 2 * 86400000, 0, new Date());
 check(k.dayIndex === 3 && k.target === 61 && k.chunk === 5, 'khatma plan');

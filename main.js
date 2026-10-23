@@ -1,6 +1,6 @@
 // أذان - Windows (Electron). Port of the Mac app: tray, panel, desktop widget, adhan, silent spoken alert,
 // khatma, adhkar, Friday, Ramadan, meeting detection, media pause, self-check and repair.
-const { app, BrowserWindow, Tray, Menu, ipcMain, screen, shell, nativeImage, net } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, screen, shell, nativeImage, net, powerMonitor, powerSaveBlocker } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -373,15 +373,32 @@ async function fire(e) {
   showCard(e, false);
 }
 
-let lastDay = '';
+// keep the PC from falling asleep on its own from 10 minutes before an adhan until it is over
+let awakeId = null;
+function holdAwake(list, n) {
+  const need = !!playing || list.some((e) => e.kind === 'adhan' && +n >= +e.time - 600e3 && +n <= +e.time + 180e3);
+  if (need && awakeId == null) { awakeId = powerSaveBlocker.start('prevent-app-suspension'); log('sleep held for adhan'); }
+  else if (!need && awakeId != null) { powerSaveBlocker.stop(awakeId); awakeId = null; log('sleep allowed again'); }
+}
+
+let lastDay = '', lastTick = null;
 function tick() {
   const n = new Date();
-  for (const e of events(n)) {
+  const list = events(n);
+  const prev = lastTick; lastTick = n;
+  let missed = null;
+  for (const e of list) {
     if (e.time > n || fired.has(e.key)) continue;
     fired.add(e.key); saveFired();
-    if (n - e.time > e.window) continue;
+    if (n - e.time > e.window) {
+      // the PC slept through the adhan (no tick at adhan time): say so quietly if the prayer time is still running
+      if (e.kind === 'adhan' && prev && prev < e.time) { const until = Calc.missedUntil(calcInput(), e.p, e.time, n); if (until) missed = { kind: 'missed', p: e.p, time: e.time, until }; }
+      continue;
+    }
     fire(e);
   }
+  if (missed) fire(missed);
+  holdAwake(list, n);
   const dk = dayKey(n);
   if (dk !== lastDay) { lastDay = dk; dailyBackup(); }
   updateTray();
@@ -495,7 +512,7 @@ function showCard(e, meeting) {
   const W = 400, H = 260;
   card = new BrowserWindow(base({ width: W, height: H, x: wa.x + wa.width - W - 12, y: wa.y + wa.height - H - 12, skipTaskbar: true, focusable: false, alwaysOnTop: true }));
   card.setAlwaysOnTop(true, 'pop-up-menu');
-  card.loadFile(path.join(APP, 'card.html'), { query: { e: JSON.stringify({ kind: e.kind, p: e.p || null, time: +e.time, meeting }) } });
+  card.loadFile(path.join(APP, 'card.html'), { query: { e: JSON.stringify({ kind: e.kind, p: e.p || null, time: +e.time, until: e.until ? +e.until : null, meeting }) } });
   card.once('ready-to-show', () => card && card.showInactive());
   const auto = e.kind === 'update' ? null : e.kind === 'adhan' ? (playing ? null : 120e3) : (e.kind === 'pre' || e.kind === 'khutbah') ? 45e3 : e.kind === 'after' ? 20 * 60e3 : 10 * 60e3;
   if (auto) setTimeout(() => { if (cardKind === e.kind) closeCard(); }, auto);
@@ -601,6 +618,7 @@ app.whenReady().then(() => {
   applyDesk();
   updateTray();
   setInterval(tick, 5000);
+  powerMonitor.on('resume', () => setTimeout(tick, 1500));
   setInterval(() => { if (S.autoLocation) autoLocate(); }, 3 * 3600e3);
   setTimeout(() => { if (S.autoUpdateCheck && !TEST) checkUpdate(false); }, 30000);
   setInterval(() => { if (S.autoUpdateCheck && !TEST) checkUpdate(false); }, 6 * 3600e3);
@@ -611,6 +629,7 @@ app.whenReady().then(() => {
     lines.push(`wintest: platform=${process.platform} version=${app.getVersion()} packaged=${app.isPackaged}`);
     lines.push(`wintest: selfcheck checked=${report.checked} problems=${report.problems.join(',') || 'none'} repaired=${report.repaired.join(',') || 'none'}`);
     lines.push(`wintest: tray=${!!tray} desk=${!!desk} audioWin=${!!audioWin}`);
+    try { const id = powerSaveBlocker.start('prevent-app-suspension'); lines.push(`wintest: sleep_hold=${powerSaveBlocker.isStarted(id)}`); powerSaveBlocker.stop(id); } catch (e) { lines.push('wintest: sleep_hold_error ' + e.message); }
     try { lines.push(`wintest: mic_in_use=${await micInUse()}`); } catch (e) { lines.push('wintest: mic_error ' + e.message); }
     try { const out = await runPS(PS_MEDIA('pause')); lines.push(`wintest: media_script_ok paused=[${out.trim()}]`); } catch (e) { lines.push('wintest: media_error ' + e.message); }
     const inp = calcInput();
@@ -630,7 +649,7 @@ app.whenReady().then(() => {
     if (show === 'panel') showPanel();
     else if (show === 'settings') openSettings();
     else if (show === 'adhkar') openAdhkar('morning');
-    else if (show.startsWith('card:')) showCard({ kind: show.slice(5), p: process.env.AZAN_PRAYER || 'maghrib', time: new Date() }, !!process.env.AZAN_MEETING);
+    else if (show.startsWith('card:')) { const k = show.slice(5), miss = k === 'missed'; showCard({ kind: k, p: process.env.AZAN_PRAYER || 'maghrib', time: new Date(Date.now() - (miss ? 1500e3 : 0)), until: miss ? new Date(Date.now() + 3600e3) : null }, !!process.env.AZAN_MEETING); }
     else if (show === 'playing') { startAdhan('maghrib'); setTimeout(showPanel, 600); }
     else if (show === 'announce') announce('fajr');
   }, 1500);

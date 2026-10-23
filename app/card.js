@@ -20,7 +20,7 @@ const content = h('div', { class: 'content' });
 frame.append(content); root.append(frame);
 const close = () => window.azan.send('card:close');
 
-const ICONS = { update: '⬇️', pre: '⏰', after: '🤲', morningAdhkar: '🌅', eveningAdhkar: '🌇', kahf: '📖', khutbah: '🕌', suhoor: '🌙' };
+const ICONS = { update: '⬇️', pre: '⏰', after: '🤲', morningAdhkar: '🌅', eveningAdhkar: '🌇', kahf: '📖', khutbah: '🕌', suhoor: '🌙', missed: '🕰️' };
 function title(s) {
   const p = E.p, ram = Calc.isRamadan(new Date(), s.hijriOffset);
   switch (E.kind) {
@@ -33,6 +33,7 @@ function title(s) {
     case 'khutbah': return `خطبة الجمعة ${Calc.countdownLong(s.khutbahBefore * 60, latin())}`;
     case 'suhoor': return 'وقت السحور';
     case 'update': return 'نسخة جديدة من أذان';
+    case 'missed': return `فاتك أذان ${Calc.AR[E.p]}`;
   }
   return 'أذان';
 }
@@ -41,6 +42,7 @@ function subtitle(s) {
     case 'adhan': return E.meeting ? 'أنت باجتماع، فطلع التنبيه بدون أذان' : fmtTime(new Date(E.time));
     case 'after': return `صلاة ${Calc.AR[E.p]}`;
     case 'kahf': return 'وأكثر من الصلاة على النبي ﷺ';
+    case 'missed': return E.until ? `كان الأذان ${fmtTime(new Date(E.time))} · وقت الصلاة مستمر حتى ${fmtTime(new Date(E.until))}` : 'الجهاز كان نايم وقت الأذان';
     case 'update': return STATE.update && STATE.update.available ? `${STATE.update.available.version} (عندك ${STATE.version})` : null;
     case 'suhoor': { const f = new Date(E.time + s.suhoorBefore * 60000); return `الإمساك ${fmtTime(new Date(f - 600000))} · الفجر ${fmtTime(f)}`; }
   }

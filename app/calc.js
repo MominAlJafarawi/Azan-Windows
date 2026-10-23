@@ -126,6 +126,12 @@
     }
     return { p: 'fajr', t: new Date(now.getTime() + 86400000) };
   }
+  // end of a prayer's time (next event, sunrise for fajr) for a missed-adhan card, or null when the card is no longer useful
+  function missedUntil(input, p, adhanTime, now) {
+    if (!input || p === 'sunrise') return null;
+    const end = next(input, new Date(+adhanTime + 1000)).t;
+    return +now < +end - 60000 ? end : null;
+  }
   function previous(input, now) {
     for (let k = 0; k < 3; k++) {
       const d = new Date(now.getTime() - k * 86400000);
@@ -186,7 +192,7 @@
     return { perDay, dayIndex, target, chunk, finished, portion, behind: Math.max(0, target - lastRead) };
   }
 
-  const api = { PRAYERS, AR, METHODS, methodForCountry, compute, next, previous, num, time, hijri, isRamadan, gregorian,
+  const api = { PRAYERS, AR, METHODS, methodForCountry, compute, next, missedUntil, previous, num, time, hijri, isRamadan, gregorian,
     countdownLong, countdown, PAGES, surahOnPage, juzOfPage, pageUrl, khatma, sunPosition };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Calc = api;
 })(typeof window !== 'undefined' ? window : globalThis);
