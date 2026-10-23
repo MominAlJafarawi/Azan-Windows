@@ -164,6 +164,12 @@ function genTab() {
       h('div', { class: 'it ' + (r.problems.length ? 'bad' : 'ok') }, r.problems.length ? `في ملفات ناقصة: ${r.problems.join('، ')}` : `✓ كل الملفات سليمة (${N(r.checked)} ملف)`),
       r.repaired.length ? note('صلّحت لحالي: ' + r.repaired.join('، ')) : null,
       h('div', { class: 'it' }, `آخر فحص: ${fmtTime(new Date(r.date))}`, h('button', { class: 'pill', style: { marginInlineStart: 'auto' }, onclick: () => window.azan.runCheck() }, '🩺 افحص وصلّح الآن'))),
+    (() => { const u = STATE.update || {}; return section('التحديثات', sw('autoUpdateCheck', 'افحص مرة باليوم إذا في نسخة جديدة'),
+      h('div', { class: 'it' }, h('span', {}, `نسختك: ${STATE.version}`, u.available ? h('span', { class: 'ok' }, ` · في نسخة جديدة: ${u.available.version}`) : null),
+        u.available ? h('button', { class: 'pill gold-fill', style: { marginInlineStart: 'auto' }, onclick: () => window.azan.send('update:install') }, u.progress != null ? 'عم ينزّل…' : '⬇ حدّث هلأ')
+          : h('button', { class: 'pill', style: { marginInlineStart: 'auto' }, onclick: () => window.azan.checkUpdate() }, u.checking ? 'عم يفحص…' : '↻ افحص الآن')),
+      u.error ? note(u.error, true) : null,
+      note('الفحص بيسأل GitHub عن آخر نسخة بس، وما بيبعت أي معلومات عنك.')); })(),
     section('التشغيل', sw('launchAtLogin', 'يشتغل لحاله لما يفتح ويندوز')),
     section('حول', h('div', { class: 'it' }, 'الإصدار', h('span', { class: 'v' }, STATE.version)),
       note('أصوات الأذان من مستودع Kiwifu/adhan-mp3 للاستعمال الشخصي. الأذكار من حصن المسلم. الخط Amiri برخصة OFL. تطوير: مؤمن الجعفراوي.')),

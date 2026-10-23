@@ -9,5 +9,6 @@ contextBridge.exposeInMainWorld('azan', {
   searchCity: (q) => ipcRenderer.invoke('location:search', q),
   autoLocate: () => ipcRenderer.invoke('location:auto'),
   runCheck: () => ipcRenderer.invoke('check:run'),
+  checkUpdate: () => ipcRenderer.invoke('update:check'),
   send: (ch, ...a) => ipcRenderer.send(ch, ...a),
 });

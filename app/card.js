@@ -20,7 +20,7 @@ const content = h('div', { class: 'content' });
 frame.append(content); root.append(frame);
 const close = () => window.azan.send('card:close');
 
-const ICONS = { pre: '⏰', after: '🤲', morningAdhkar: '🌅', eveningAdhkar: '🌇', kahf: '📖', khutbah: '🕌', suhoor: '🌙' };
+const ICONS = { update: '⬇️', pre: '⏰', after: '🤲', morningAdhkar: '🌅', eveningAdhkar: '🌇', kahf: '📖', khutbah: '🕌', suhoor: '🌙' };
 function title(s) {
   const p = E.p, ram = Calc.isRamadan(new Date(), s.hijriOffset);
   switch (E.kind) {
@@ -32,6 +32,7 @@ function title(s) {
     case 'kahf': return 'يوم الجمعة: سورة الكهف';
     case 'khutbah': return `خطبة الجمعة ${Calc.countdownLong(s.khutbahBefore * 60, latin())}`;
     case 'suhoor': return 'وقت السحور';
+    case 'update': return 'نسخة جديدة من أذان';
   }
   return 'أذان';
 }
@@ -40,6 +41,7 @@ function subtitle(s) {
     case 'adhan': return E.meeting ? 'أنت باجتماع، فطلع التنبيه بدون أذان' : fmtTime(new Date(E.time));
     case 'after': return `صلاة ${Calc.AR[E.p]}`;
     case 'kahf': return 'وأكثر من الصلاة على النبي ﷺ';
+    case 'update': return STATE.update && STATE.update.available ? `${STATE.update.available.version} (عندك ${STATE.version})` : null;
     case 'suhoor': { const f = new Date(E.time + s.suhoorBefore * 60000); return `الإمساك ${fmtTime(new Date(f - 600000))} · الفجر ${fmtTime(f)}`; }
   }
   return null;
@@ -70,6 +72,19 @@ function render() {
   }
   if (E.kind === 'morningAdhkar' || E.kind === 'eveningAdhkar') acts.append(h('div', { class: 'row' }, h('button', { class: 'pill gold-fill', onclick: () => { window.azan.send('open:adhkar', E.kind === 'morningAdhkar' ? 'morning' : 'evening'); close(); } }, '▶ ابدأ')));
   if (E.kind === 'kahf') acts.append(h('div', { class: 'row' }, h('button', { class: 'pill gold-fill', onclick: () => { window.azan.send('open:url', 'https://quran.com/18'); close(); } }, '📖 اقرأ سورة الكهف')));
+  if (E.kind === 'update' && STATE.update && STATE.update.available) {
+    const u = STATE.update;
+    const notes = (u.available.notes || '').slice(0, 260);
+    if (notes) acts.append(h('div', { style: { fontSize: '13px', lineHeight: '1.6' } }, notes + (u.available.notes.length > 260 ? '…' : '')));
+    if (u.progress != null) acts.append(bar(u.progress), h('div', { class: 'sec', style: { fontSize: '12px' } }, u.progress < 1 ? `عم ينزّل… ${N(Math.round(u.progress * 100))}٪` : 'عم يثبّت، وبيرجع يفتح لحاله…'));
+    else {
+      if (u.error) acts.append(h('div', { style: { fontSize: '12px', color: '#ffb36b' } }, u.error));
+      acts.append(h('div', { class: 'row' },
+        h('button', { class: 'pill gold-fill', onclick: () => window.azan.send('update:install') }, '⬇ حدّث هلأ'),
+        h('button', { class: 'pill', onclick: () => window.azan.send('update:snooze') }, 'لاحقاً'),
+        h('button', { class: 'pill', onclick: () => window.azan.send('open:url', u.available.page) }, 'التفاصيل')));
+    }
+  }
   if (acts.childElementCount) content.append(acts);
   if (!mounted) { mounted = true; requestAnimationFrame(() => mountSky(frame, { moonX: 110, moonY: 30 })); }
 }

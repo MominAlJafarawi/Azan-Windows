@@ -4,7 +4,8 @@ const { app, BrowserWindow, Tray, Menu, ipcMain, screen, shell, nativeImage, net
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
+const os = require('os');
 const Calc = require('./app/calc.js');
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -41,7 +42,7 @@ const DEFAULTS = {
   modes: {}, voice: 'makkah', fajrVoice: 'makkah_fajr', volume: 0.8, preReminder: 10, smartPause: true, meetingSilent: true,
   khatmaOn: true, khatmaDays: 30, khatmaStart: Date.now(), khatmaRead: 0, khatmaCount: 0, khatmaAfterPrayer: true,
   adhkarMorning: true, adhkarEvening: true, adhkarAfterPrayer: true, jumuah: true, khutbahBefore: 30, suhoorBefore: 45,
-  launchAtLogin: true, deskOn: true, deskSize: 'medium', deskOnTop: false, deskX: null, deskY: null, deskScale: 1, panelScale: 1,
+  launchAtLogin: true, deskOn: true, deskSize: 'medium', deskOnTop: false, deskX: null, deskY: null, deskScale: 1, panelScale: 1, autoUpdateCheck: true,
   speakOn: true, speakRepeats: 2, speakInMeeting: true, speakVolume: 0.6, speakTakbir: true,
 };
 const SETTINGS = path.join(DATA, 'settings.json');
@@ -156,7 +157,7 @@ let playing = null;         // prayer key while the adhan plays
 let locationStatus = 'idle';
 function publicState() {
   return { settings: S, effMethod: effMethod(), methods: Object.fromEntries(Object.entries(Calc.METHODS).map(([k, v]) => [k, v.ar])),
-    playing, report, locationStatus, voices: VOICES, now: Date.now(), version: app.getVersion() };
+    playing, report, locationStatus, voices: VOICES, now: Date.now(), version: currentVersion(), update: upd };
 }
 function broadcast() { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send('state', publicState()); }
 
@@ -260,6 +261,60 @@ function announce(p) {
   const voice = S.speakTakbir ? (p === 'fajr' ? S.fajrVoice : S.voice) : null;
   audio({ type: 'announce', takbir: voice ? fileUrl(resPath(`sounds/${voice}.mp3`)) : null, takbirEnd: voice ? TAKBIR_END[voice] || 8 : 0,
     speech: fileUrl(resPath(`speech/${key}.m4a`)), times: S.speakRepeats, volume: S.speakVolume });
+}
+
+// ---------------- updates (GitHub releases) ----------------
+const UPDATE_REPO = 'MominAlJafarawi/Azan-Windows';
+const currentVersion = () => process.env.AZAN_FAKE_VERSION || app.getVersion();
+let upd = { available: null, checking: false, lastCheck: null, progress: null, error: null };
+function isNewer(a, b) {
+  const pa = String(a).split('.').map(Number), pb = String(b).split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) { const x = pa[i] || 0, y = pb[i] || 0; if (x !== y) return x > y; }
+  return false;
+}
+function readState() { try { return JSON.parse(fs.readFileSync(STATE, 'utf8')); } catch (_) { return {}; } }
+function writeState(patch) { try { fs.writeFileSync(STATE, JSON.stringify({ ...readState(), ...patch })); } catch (_) {} }
+async function checkUpdate(force) {
+  const st = readState();
+  if (!force && st.updateLastCheck && Date.now() - st.updateLastCheck < 20 * 3600e3) return;
+  upd.checking = true; upd.error = null; broadcast();
+  try {
+    const r = await net.fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' } });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    const v = String(j.tag_name || '').replace(/^v/i, '');
+    const exe = (j.assets || []).find((a) => /^Azan-Setup-.*\.exe$/.test(a.name));
+    log(`update check: latest ${v}, current ${currentVersion()}`);
+    upd.available = isNewer(v, currentVersion()) && exe ? { version: v, notes: j.body || '', url: exe.browser_download_url, size: exe.size, page: j.html_url } : null;
+    upd.lastCheck = Date.now(); writeState({ updateLastCheck: upd.lastCheck });
+    if (upd.available && (force || st.updateSnoozed !== v)) showCard({ kind: 'update', time: new Date() }, false);
+  } catch (e) { upd.error = 'ما قدرت أوصل لـGitHub: ' + e.message; log('update check failed ' + e.message); }
+  upd.checking = false; broadcast();
+}
+async function installUpdate() {
+  const u = upd.available; if (!u || upd.progress != null) return;
+  upd.progress = 0; upd.error = null; broadcast();
+  try {
+    const file = path.join(os.tmpdir(), `Azan-Setup-${u.version}.exe`);
+    const r = await net.fetch(u.url);
+    if (!r.ok || !r.body) throw new Error('HTTP ' + r.status);
+    const total = Number(r.headers.get('content-length')) || u.size || 1;
+    const out = fs.createWriteStream(file);
+    const reader = r.body.getReader(); let got = 0, last = 0;
+    for (;;) {
+      const { done, value } = await reader.read(); if (done) break;
+      out.write(Buffer.from(value)); got += value.length;
+      if (Date.now() - last > 300) { last = Date.now(); upd.progress = got / total; broadcast(); }
+    }
+    await new Promise((res) => out.end(res));
+    if (got < 1e6 || (u.size && got !== u.size)) throw new Error('الملف ناقص');
+    upd.progress = 1; broadcast();
+    if (process.env.AZAN_UPDATE_DRYRUN) { log(`update dry run ok: ${file} ${got} bytes`); upd.progress = null; upd.error = `تجربة: التحديث جاهز (${u.version})`; broadcast(); return; }
+    log(`update: installing ${u.version}`);
+    // silent install over the current one, then start the app again; settings in %APPDATA% stay
+    spawn(file, ['/S', '--force-run'], { detached: true, stdio: 'ignore' }).unref();
+    setTimeout(() => { app.isQuitting = true; app.quit(); }, 500);
+  } catch (e) { upd.progress = null; upd.error = 'فشل التحديث: ' + e.message; log('update failed ' + e.message); broadcast(); }
 }
 
 // ---------------- events ----------------
@@ -442,7 +497,7 @@ function showCard(e, meeting) {
   card.setAlwaysOnTop(true, 'pop-up-menu');
   card.loadFile(path.join(APP, 'card.html'), { query: { e: JSON.stringify({ kind: e.kind, p: e.p || null, time: +e.time, meeting }) } });
   card.once('ready-to-show', () => card && card.showInactive());
-  const auto = e.kind === 'adhan' ? (playing ? null : 120e3) : (e.kind === 'pre' || e.kind === 'khutbah') ? 45e3 : e.kind === 'after' ? 20 * 60e3 : 10 * 60e3;
+  const auto = e.kind === 'update' ? null : e.kind === 'adhan' ? (playing ? null : 120e3) : (e.kind === 'pre' || e.kind === 'khutbah') ? 45e3 : e.kind === 'after' ? 20 * 60e3 : 10 * 60e3;
   if (auto) setTimeout(() => { if (cardKind === e.kind) closeCard(); }, auto);
 }
 function closeCard() { if (card && !card.isDestroyed()) card.destroy(); card = null; cardKind = null; }
@@ -505,6 +560,9 @@ ipcMain.on('resize:drag', (e, { factor, done, fromLeft }) => {
   }
 });
 ipcMain.on('card:close', () => closeCard());
+ipcMain.on('update:install', () => installUpdate());
+ipcMain.on('update:snooze', () => { if (upd.available) writeState({ updateSnoozed: upd.available.version }); closeCard(); });
+ipcMain.handle('update:check', () => checkUpdate(true));
 ipcMain.on('win:close', (e) => { const w = BrowserWindow.fromWebContents(e.sender); if (w) w.close(); });
 ipcMain.on('desk:moveBy', (_e, dx, dy) => { if (!desk) return; const [x, y] = desk.getPosition(); desk.setPosition(Math.round(x + dx), Math.round(y + dy)); });
 ipcMain.on('desk:moved', () => { if (!desk) return; const [x, y] = desk.getPosition(); S.deskX = x; S.deskY = y; saveSettings(); });
@@ -544,6 +602,8 @@ app.whenReady().then(() => {
   updateTray();
   setInterval(tick, 5000);
   setInterval(() => { if (S.autoLocation) autoLocate(); }, 3 * 3600e3);
+  setTimeout(() => { if (S.autoUpdateCheck && !TEST) checkUpdate(false); }, 30000);
+  setInterval(() => { if (S.autoUpdateCheck && !TEST) checkUpdate(false); }, 6 * 3600e3);
   log(`started ${app.getVersion()}`);
   // automatic test on a real Windows machine (GitHub Actions): logs results, then quits
   if (process.env.AZAN_WINTEST) setTimeout(async () => {
@@ -556,6 +616,11 @@ app.whenReady().then(() => {
     const inp = calcInput();
     if (inp) { const t = Calc.compute(inp, new Date()); lines.push('wintest: times ' + Calc.PRAYERS.map((p) => `${p}=${t[p] ? t[p].toISOString().slice(11, 16) : '-'}`).join(' ')); }
     for (const rel of ['sounds/makkah.mp3', 'speech/fajr.m4a', 'adhkar.json']) lines.push(`wintest: res ${rel} -> ${resPath(rel) ? 'ok' : 'MISSING'}`);
+    if (process.env.AZAN_FAKE_VERSION) {
+      await checkUpdate(true);
+      lines.push(`wintest: update available=${upd.available ? upd.available.version : 'none'} error=${upd.error || 'none'}`);
+      if (upd.available) { await installUpdate(); lines.push(`wintest: update ${upd.error && upd.error.startsWith('تجربة') ? 'dry run ok' : 'result ' + upd.error}`); }
+    }
     lines.forEach(log);
     if (process.env.AZAN_WINTEST === 'show') { showPanel(); setTimeout(() => { log('wintest: done'); app.exit(0); }, 12000); }
     else { log('wintest: done'); app.exit(0); }

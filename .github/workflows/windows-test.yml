@@ -69,6 +69,20 @@ jobs:
           if ($log -notmatch 'wintest: res sounds/makkah.mp3 -> ok') { throw 'resources missing' }
           if ($log -notmatch 'wintest: done') { throw 'app did not finish the test' }
 
+      - name: Update check and download (dry run, pretends to be version 1.0)
+        shell: pwsh
+        run: |
+          $d = "$env:RUNNER_TEMP\azan-data"
+          $env:AZAN_DATA = $d
+          $env:AZAN_WINTEST = '1'
+          $env:AZAN_FAKE_VERSION = '1.0'
+          $env:AZAN_UPDATE_DRYRUN = '1'
+          $p = Start-Process $env:APP -PassThru
+          Wait-Process -Id $p.Id -Timeout 300
+          $log = Get-Content "$d\azan.log" -Raw -Encoding utf8
+          ($log -split "`n") | Select-String 'update' | Select-Object -Last 3
+          if ($log -notmatch 'wintest: update dry run ok') { throw 'update check/download failed' }
+
       - name: Damage files and check the self-repair
         shell: pwsh
         run: |
