@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
 const os = require('os');
 const Calc = require('./app/calc.js');
+const Quran = require('./app/quran.js');
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
@@ -44,6 +45,7 @@ const DEFAULTS = {
   adhkarMorning: true, adhkarEvening: true, adhkarAfterPrayer: true, jumuah: true, khutbahBefore: 30, suhoorBefore: 45,
   launchAtLogin: true, deskOn: true, deskSize: 'medium', deskOnTop: false, deskX: null, deskY: null, deskScale: 1, panelScale: 1, autoUpdateCheck: true,
   speakOn: true, speakRepeats: 2, speakInMeeting: true, speakVolume: 0.6, speakTakbir: true,
+  quranPage: 1, quranBookmark: 0,
 };
 const SETTINGS = path.join(DATA, 'settings.json');
 let readOnly = false;
@@ -60,6 +62,8 @@ function sanitize(raw) {
   }
   s.deskScale = Math.min(2, Math.max(0.6, Number(s.deskScale) || 1));
   s.panelScale = Math.min(1.5, Math.max(0.8, Number(s.panelScale) || 1));
+  s.quranPage = Math.min(Quran.PAGES, Math.max(1, Math.round(Number(s.quranPage) || 1)));
+  s.quranBookmark = Math.min(Quran.PAGES, Math.max(0, Math.round(Number(s.quranBookmark) || 0)));
   return s;
 }
 function loadSettings() {
@@ -412,7 +416,7 @@ const base = (extra) => ({ frame: false, transparent: true, resizable: false, sh
   webPreferences: { preload: PRELOAD, contextIsolation: true, nodeIntegration: false, sandbox: false }, ...extra });
 
 let tray = null, panel = null, panelPinned = false, panelPlacing = false;
-let desk = null, card = null, cardKind = null, settingsWin = null, adhkarWin = null;
+let desk = null, card = null, cardKind = null, mainWin = null;
 
 function trayIcon() {
   const p = path.join(APP, 'img', 'tray.png');
@@ -432,9 +436,11 @@ function trayMenu() {
     { label: 'فتح أذان', click: () => showPanel() },
     { label: 'إيقاف الأذان', enabled: !!playing, click: () => stopAdhan() },
     { type: 'separator' },
-    { label: 'أذكار الصباح', click: () => openAdhkar('morning') },
-    { label: 'أذكار المساء', click: () => openAdhkar('evening') },
-    { label: 'الإعدادات', click: () => openSettings() },
+    { label: 'النافذة الرئيسية', click: () => openMain({ tab: 'home' }) },
+    { label: 'المصحف', click: () => openMain({ tab: 'quran' }) },
+    { label: 'أذكار الصباح', click: () => openMain({ tab: 'adhkar', kind: 'morning', fresh: true }) },
+    { label: 'أذكار المساء', click: () => openMain({ tab: 'adhkar', kind: 'evening', fresh: true }) },
+    { label: 'الإعدادات', click: () => openMain({ tab: 'settings' }) },
     { label: S.deskOn ? 'إخفاء الويدجت' : 'إظهار الويدجت', click: () => update({ deskOn: !S.deskOn }) },
     { type: 'separator' },
     { label: 'إنهاء', click: () => { app.isQuitting = true; app.quit(); } },
@@ -519,23 +525,41 @@ function showCard(e, meeting) {
 }
 function closeCard() { if (card && !card.isDestroyed()) card.destroy(); card = null; cardKind = null; }
 
-function openSettings() {
+// One main window (tabs: home, adhkar, mushaf, settings). Every "open …" from the panel, the cards,
+// the tray or the widget shows this window on the right tab; p = {tab, kind, page, index, sub, fresh}.
+function openMain(p = { tab: 'home' }) {
   hidePanel();
-  if (settingsWin && !settingsWin.isDestroyed()) { settingsWin.show(); settingsWin.focus(); return; }
-  settingsWin = new BrowserWindow(base({ width: 620, height: 680, transparent: false, backgroundColor: '#0b1030', resizable: true, minWidth: 560, minHeight: 500 }));
-  settingsWin.loadFile(path.join(APP, 'settings.html'));
-  settingsWin.once('ready-to-show', () => settingsWin.show());
+  if (mainWin && !mainWin.isDestroyed()) {
+    if (mainWin.isMinimized()) mainWin.restore();
+    mainWin.webContents.send('nav', p);
+    mainWin.show(); mainWin.focus();
+    return mainWin;
+  }
+  const wa = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const W = Math.min(680, wa.width - 40), H = Math.min(780, wa.height - 40);
+  mainWin = new BrowserWindow(base({ width: W, height: H, x: Math.round(wa.x + (wa.width - W) / 2), y: Math.round(wa.y + (wa.height - H) / 2),
+    title: 'أذان', transparent: false, backgroundColor: '#0b1030', resizable: true, minimizable: true, maximizable: true,
+    minWidth: Math.min(560, W), minHeight: Math.min(600, H) }));
+  mainWin.loadFile(path.join(APP, 'main.html'), { query: { nav: JSON.stringify(p) } });
+  mainWin.once('ready-to-show', () => { if (mainWin) { mainWin.show(); mainWin.focus(); } });
+  mainWin.on('closed', () => { mainWin = null; });
+  return mainWin;
 }
-function openAdhkar(kind) {
-  hidePanel();
-  if (adhkarWin && !adhkarWin.isDestroyed()) { adhkarWin.webContents.send('adhkar-kind', kind); adhkarWin.show(); adhkarWin.focus(); return; }
-  adhkarWin = new BrowserWindow(base({ width: 520, height: 700, transparent: false, backgroundColor: '#0b1030', resizable: true, minWidth: 440, minHeight: 480 }));
-  adhkarWin.loadFile(path.join(APP, 'adhkar.html'), { query: { kind } });
-  adhkarWin.once('ready-to-show', () => adhkarWin.show());
+
+// ---------------- Quran (Tanzil text, shipped verbatim in res/quran) ----------------
+let quranCache = null;
+function quranData() {
+  if (quranCache) return quranCache;
+  const t = resPath('quran/quran-uthmani.txt'), m = resPath('quran/quran-meta.json');
+  if (!t || !m) return null;
+  try { quranCache = { text: fs.readFileSync(t, 'utf8'), meta: JSON.parse(fs.readFileSync(m, 'utf8')) }; } catch (e) { log('quran read failed ' + e.message); return null; }
+  return quranCache;
 }
+let mushafWait = null;
 
 // ---------------- IPC ----------------
 ipcMain.handle('state', () => publicState());
+ipcMain.handle('quran:data', () => quranData());
 ipcMain.handle('adhkar:data', () => { try { return JSON.parse(fs.readFileSync(resPath('adhkar.json'), 'utf8')); } catch (_) { return null; } });
 ipcMain.handle('res:url', (_e, rel) => fileUrl(resPath(rel)));
 ipcMain.handle('settings:set', (_e, patch) => { update(patch || {}); return publicState(); });
@@ -550,8 +574,10 @@ ipcMain.on('audio:ended', (_e, what) => { if (what === 'adhan' && playing) adhan
 ipcMain.on('khatma:read', (_e, page) => { const read = Math.min(Calc.PAGES, Math.max(S.khatmaRead, page)); update({ khatmaRead: read, khatmaCount: S.khatmaCount + (read >= Calc.PAGES && S.khatmaRead < Calc.PAGES ? 1 : 0) }); });
 ipcMain.on('khatma:new', (_e, days) => update({ khatmaDays: days || S.khatmaDays, khatmaStart: Date.now(), khatmaRead: 0 }));
 ipcMain.on('open:url', (_e, url) => { if (/^https:\/\//.test(url)) shell.openExternal(url); });
-ipcMain.on('open:settings', () => openSettings());
-ipcMain.on('open:adhkar', (_e, kind) => openAdhkar(kind));
+ipcMain.on('open:main', (_e, p) => openMain(p && typeof p === 'object' ? p : { tab: 'home' }));
+ipcMain.on('open:settings', (_e, sub) => openMain({ tab: 'settings', sub }));
+ipcMain.on('open:adhkar', (_e, kind) => openMain({ tab: 'adhkar', kind, fresh: true }));
+ipcMain.on('mushaf:rendered', (_e, r) => { if (mushafWait) { const f = mushafWait; mushafWait = null; f(r); } });
 ipcMain.on('panel:close', () => hidePanel());
 // the panel reports its natural (unscaled) height; the window is that times panelScale
 ipcMain.on('panel:height', (_e, h) => { panelHeight = Math.ceil(h); if (panel && panel.isVisible() && !panelPinned) placePanel(panelHeight); else if (panel) placePanel(panelHeight, true); });
@@ -581,6 +607,7 @@ ipcMain.on('update:install', () => installUpdate());
 ipcMain.on('update:snooze', () => { if (upd.available) writeState({ updateSnoozed: upd.available.version }); closeCard(); });
 ipcMain.handle('update:check', () => checkUpdate(true));
 ipcMain.on('win:close', (e) => { const w = BrowserWindow.fromWebContents(e.sender); if (w) w.close(); });
+ipcMain.on('win:min', (e) => { const w = BrowserWindow.fromWebContents(e.sender); if (w) w.minimize(); });
 ipcMain.on('desk:moveBy', (_e, dx, dy) => { if (!desk) return; const [x, y] = desk.getPosition(); desk.setPosition(Math.round(x + dx), Math.round(y + dy)); });
 ipcMain.on('desk:moved', () => { if (!desk) return; const [x, y] = desk.getPosition(); S.deskX = x; S.deskY = y; saveSettings(); });
 ipcMain.on('desk:click', () => { if (playing) stopAdhan(); else showPanel(); });
@@ -596,7 +623,7 @@ ipcMain.on('desk:menu', () => {
     { label: S.use24h ? 'الساعة: ٢٤ (اكبس لـ١٢)' : 'الساعة: ١٢ (اكبس لـ٢٤)', click: () => update({ use24h: !S.use24h }) },
     { type: 'separator' },
     { label: 'فوق كل النوافذ', type: 'checkbox', checked: !!S.deskOnTop, click: () => update({ deskOnTop: !S.deskOnTop }) },
-    { label: 'الإعدادات…', click: () => openSettings() },
+    { label: 'الإعدادات…', click: () => openMain({ tab: 'settings' }) },
     { label: 'إخفاء الويدجت', click: () => update({ deskOn: false }) },
   ]).popup({ window: desk });
 });
@@ -634,7 +661,13 @@ app.whenReady().then(() => {
     try { const out = await runPS(PS_MEDIA('pause')); lines.push(`wintest: media_script_ok paused=[${out.trim()}]`); } catch (e) { lines.push('wintest: media_error ' + e.message); }
     const inp = calcInput();
     if (inp) { const t = Calc.compute(inp, new Date()); lines.push('wintest: times ' + Calc.PRAYERS.map((p) => `${p}=${t[p] ? t[p].toISOString().slice(11, 16) : '-'}`).join(' ')); }
-    for (const rel of ['sounds/makkah.mp3', 'speech/fajr.m4a', 'adhkar.json']) lines.push(`wintest: res ${rel} -> ${resPath(rel) ? 'ok' : 'MISSING'}`);
+    try {
+      const d = quranData(), Q = d && Quran.build(d.text, d.meta);
+      lines.push(Q ? `wintest: quran pages=${Q.pageStart.length} verses=${Q.verses.length} suras=${d.meta.suras.length} p293=${Quran.pageVerses(Q, 293).length}` : 'wintest: quran MISSING');
+      const r = await new Promise((res) => { mushafWait = res; openMain({ tab: 'quran', page: 1 }); setTimeout(() => res(null), 10000); });
+      lines.push(r ? `wintest: mushaf page=${r.page} verses=${r.verses}` : 'wintest: mushaf not rendered');
+    } catch (e) { lines.push('wintest: quran_error ' + e.message); }
+    for (const rel of ['sounds/makkah.mp3', 'speech/fajr.m4a', 'adhkar.json', 'quran/quran-uthmani.txt', 'quran/quran-meta.json']) lines.push(`wintest: res ${rel} -> ${resPath(rel) ? 'ok' : 'MISSING'}`);
     if (process.env.AZAN_FAKE_VERSION) {
       await checkUpdate(true);
       lines.push(`wintest: update available=${upd.available ? upd.available.version : 'none'} error=${upd.error || 'none'}`);
@@ -647,8 +680,15 @@ app.whenReady().then(() => {
   const show = process.env.AZAN_SHOW;
   if (TEST && show) setTimeout(() => {
     if (show === 'panel') showPanel();
-    else if (show === 'settings') openSettings();
-    else if (show === 'adhkar') openAdhkar('morning');
+    else if (show === 'settings') openMain({ tab: 'settings', sub: process.env.AZAN_SUB });
+    else if (show === 'adhkar') openMain({ tab: 'adhkar', kind: process.env.AZAN_SUB || 'morning', fresh: true });
+    else if (show === 'quran') openMain({ tab: 'quran', page: Number(process.env.AZAN_PAGE) || undefined });
+    else if (show.startsWith('main:')) {
+      // main:<tab>[:<arg>]  e.g. main:quran:293, main:quran:index, main:adhkar:evening, main:settings:gen
+      const [, tab, arg] = show.split(':');
+      openMain(tab === 'quran' ? (arg === 'index' ? { tab, index: true } : { tab, page: Number(arg) || undefined })
+        : tab === 'adhkar' ? { tab, kind: arg || 'morning', fresh: true } : tab === 'settings' ? { tab, sub: arg } : { tab: tab || 'home' });
+    }
     else if (show.startsWith('card:')) { const k = show.slice(5), miss = k === 'missed'; showCard({ kind: k, p: process.env.AZAN_PRAYER || 'maghrib', time: new Date(Date.now() - (miss ? 1500e3 : 0)), until: miss ? new Date(Date.now() + 3600e3) : null }, !!process.env.AZAN_MEETING); }
     else if (show === 'playing') { startAdhan('maghrib'); setTimeout(showPanel, 600); }
     else if (show === 'announce') announce('fajr');

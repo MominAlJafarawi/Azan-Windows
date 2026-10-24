@@ -1,43 +1,44 @@
-// Settings window: same tabs and options as the Mac version.
+// Settings tab of the main window: same sections and options as the Mac version.
+(function () {
 document.head.append(h('style', {}, `
-  html, body { height: 100%; background: var(--bottom); }
-  #root { height: 100%; display: flex; flex-direction: column; }
-  .hdr { position: relative; height: 128px; flex: none; border-bottom: 1px solid var(--gold-line); }
-  .hdr .content { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
-  .hdr h1 { font-family: var(--naskh); font-size: 28px; }
-  .hdr .x { position: absolute; top: 14px; left: 16px; }
-  .body { flex: 1; overflow-y: auto; padding: 18px 22px 30px; user-select: text; }
-  .sec { margin-bottom: 20px; }
-  .sec h3 { font-size: 15px; font-weight: 700; margin: 0 4px 8px; color: var(--text); }
-  .box { background: var(--glass); border: 1px solid rgba(255,255,255,.12); border-radius: 14px; }
-  .it { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-bottom: 1px solid rgba(255,255,255,.07); font-size: 14px; min-height: 46px; }
-  .it:last-child { border-bottom: 0; }
-  .it .v { margin-inline-start: auto; color: var(--sec); }
-  .note { font-size: 12px; color: var(--sec); padding: 8px 14px 10px; line-height: 1.6; }
-  .note.gold { color: var(--gold); }
-  .sw { margin-inline-start: auto; width: 40px; height: 22px; border-radius: 22px; background: rgba(247,235,204,.2); position: relative; transition: .2s; flex: none; }
-  .sw::after { content: ''; position: absolute; top: 3px; right: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: .2s; }
-  .sw.on { background: var(--gold); } .sw.on::after { right: 21px; }
-  select, input[type=text] { margin-inline-start: auto; background: rgba(0,0,0,.25); color: var(--text); border: 1px solid rgba(235,194,102,.35); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; max-width: 60%; }
-  input[type=text] { margin: 0; flex: 1; max-width: none; }
-  input[type=range] { margin-inline-start: auto; width: 55%; accent-color: var(--gold); }
-  .step { margin-inline-start: auto; display: flex; align-items: center; gap: 8px; }
-  .step button { width: 26px; height: 26px; border-radius: 50%; background: rgba(247,235,204,.12); }
-  .res { padding: 6px 14px 10px; display: flex; flex-direction: column; gap: 4px; }
-  .res button { text-align: start; color: var(--gold); font-size: 14px; padding: 4px 0; }
-  .ok { color: var(--gold); } .bad { color: #ffb36b; }
+  .v-settings { height: 100%; display: flex; flex-direction: column; }
+  .v-settings .stabs { flex: none; padding: 0 0 14px; justify-content: flex-start; }
+  .v-settings .body { flex: 1; overflow-y: auto; padding: 0 2px 24px; user-select: text; }
+  .v-settings .sec { margin-bottom: 20px; color: var(--text); }
+  .v-settings .sec h3 { font-size: 16px; font-weight: 700; margin: 0 4px 8px; color: var(--gold); }
+  .v-settings .box { background: var(--glass); border: 1px solid rgba(255,255,255,.12); border-radius: 14px; }
+  .v-settings .it { display: flex; align-items: center; gap: 12px; padding: 11px 16px; border-bottom: 1px solid rgba(255,255,255,.07); font-size: 15px; min-height: 48px; }
+  .v-settings .it:last-child { border-bottom: 0; }
+  .v-settings .it .v { margin-inline-start: auto; color: var(--sec); }
+  .v-settings .note { font-size: 13px; color: var(--sec); padding: 8px 16px 10px; line-height: 1.6; }
+  .v-settings .note.gold { color: var(--gold); }
+  .v-settings .sw { margin-inline-start: auto; width: 40px; height: 22px; border-radius: 22px; background: rgba(247,235,204,.2); position: relative; transition: .2s; flex: none; }
+  .v-settings .sw::after { content: ''; position: absolute; top: 3px; right: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: .2s; }
+  .v-settings .sw.on { background: var(--gold); } .v-settings .sw.on::after { right: 21px; }
+  .v-settings select, .v-settings input[type=text] { margin-inline-start: auto; background: rgba(0,0,0,.25); color: var(--text); border: 1px solid rgba(235,194,102,.35); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 14px; max-width: 60%; }
+  .v-settings select option { background: #161c45; }
+  .v-settings input[type=text] { margin: 0; flex: 1; max-width: none; }
+  .v-settings input[type=range] { margin-inline-start: auto; width: 55%; accent-color: var(--gold); }
+  .v-settings .step { margin-inline-start: auto; display: flex; align-items: center; gap: 8px; }
+  .v-settings .step button { width: 28px; height: 28px; border-radius: 50%; background: rgba(247,235,204,.12); }
+  .v-settings .res { padding: 6px 16px 10px; display: flex; flex-direction: column; gap: 4px; }
+  .v-settings .res button { text-align: start; color: var(--gold); font-size: 15px; padding: 4px 0; }
+  .v-settings .ok { color: var(--gold); } .v-settings .bad { color: #ffb36b; }
 `));
 
 const TABS = [['loc', 'الموقع والحساب', '📍'], ['adhan', 'الأذان', '🔊'], ['khatma', 'الختمة', '📖'], ['rem', 'التذكيرات', '🔔'], ['gen', 'عام', '⚙']];
 let tab = 'loc', results = [], searchQ = '', searching = false;
-const root = document.getElementById('root');
-const hdr = h('div', { class: 'hdr drag' });
-const hc = h('div', { class: 'content' });
-hdr.append(hc);
-const body = h('div', { class: 'body' });
-root.append(hdr, body);
-setTimeout(() => mountSky(hdr, { moonX: 110, moonY: 38 }), 30);
-
+let el = null, hc = null, body = null, onSub = () => {};
+function mount(host, { onSubChange } = {}) {
+  onSub = onSubChange || onSub;
+  hc = h('div', { class: 'tabs stabs' });
+  body = h('div', { class: 'body' });
+  el = h('div', { class: 'v-settings' }, hc, body);
+  host.append(el);
+  // re-render on changes, but not while the user is typing or dragging a slider
+  body.addEventListener('focusin', (e) => { if (e.target.matches('input[type=text], input[type=range], select')) typing = true; });
+  body.addEventListener('focusout', () => { typing = false; });
+}
 const set = (patch) => window.azan.set(patch);
 const sw = (key, label) => h('div', { class: 'it' }, label, h('button', { class: 'sw' + (S()[key] ? ' on' : ''), onclick: () => set({ [key]: !S()[key] }) }));
 const sel = (key, label, opts, conv = (x) => x) => h('div', { class: 'it' }, label,
@@ -46,9 +47,7 @@ const section = (title, ...items) => h('div', { class: 'sec' }, h('h3', {}, titl
 const note = (t, gold) => h('div', { class: 'note' + (gold ? ' gold' : '') }, t);
 
 function tabs() {
-  hc.replaceChildren(h('h1', {}, 'الإعدادات'),
-    h('div', { class: 'tabs' }, TABS.map(([k, t, ic]) => h('button', { class: 'tab' + (tab === k ? ' on' : ''), onclick: () => { tab = k; render(); } }, ic, ' ', t))),
-    h('button', { class: 'icon-btn x', onclick: () => window.azan.send('win:close') }, '✕'));
+  hc.replaceChildren(...TABS.map(([k, t, ic]) => h('button', { class: 'tab' + (tab === k ? ' on' : ''), onclick: () => { if (tab !== k) onSub(k); } }, ic, ' ', t)));
 }
 
 function locTab() {
@@ -86,9 +85,9 @@ function locTab() {
 }
 async function doSearch() {
   if (!searchQ.trim()) return;
-  searching = true; render();
+  searching = true; render(true);
   results = await window.azan.searchCity(searchQ.trim());
-  searching = false; render();
+  searching = false; render(true);
 }
 function pick(r) { results = []; set({ autoLocation: false, lat: Math.round(r.lat * 1e4) / 1e4, lon: Math.round(r.lon * 1e4) / 1e4, placeName: r.city, countryCode: r.cc }); }
 
@@ -172,12 +171,15 @@ function genTab() {
       note('الفحص بيسأل GitHub عن آخر نسخة بس، وما بيبعت أي معلومات عنك.')); })(),
     section('التشغيل', sw('launchAtLogin', 'يشتغل لحاله لما يفتح ويندوز')),
     section('حول', h('div', { class: 'it' }, 'الإصدار', h('span', { class: 'v' }, STATE.version)),
-      note('أصوات الأذان من مستودع Kiwifu/adhan-mp3 للاستعمال الشخصي. الأذكار من حصن المسلم. الخط Amiri برخصة OFL. تطوير: مؤمن الجعفراوي.')),
+      note('أصوات الأذان من مستودع Kiwifu/adhan-mp3 للاستعمال الشخصي. الأذكار من حصن المسلم. نص المصحف: مشروع تنزيل tanzil.net (برخصة CC BY 3.0، بدون أي تعديل). الخط Amiri برخصة OFL. تطوير: مؤمن الجعفراوي.')),
   ];
 }
 
-function render() {
-  if (!STATE) return;
+let typing = false, rendered = false;
+function render(force) {
+  if (!STATE || !el) return;
+  if (!force && rendered && typing && document.hasFocus()) return;
+  rendered = true;
   tabs();
   const top = body.scrollTop;
   body.replaceChildren(...({ loc: locTab, adhan: adhanTab, khatma: khatmaTab, rem: remTab, gen: genTab }[tab])());
@@ -185,8 +187,11 @@ function render() {
   const focus = body.querySelector('input[type=text]');
   if (focus && document.activeElement === document.body && searchQ) { focus.focus(); focus.setSelectionRange(searchQ.length, searchQ.length); }
 }
-// re-render on changes, but not while the user is typing or dragging a slider
-let typing = false;
-body.addEventListener('focusin', (e) => { if (e.target.matches('input[type=text], input[type=range], select')) typing = true; });
-body.addEventListener('focusout', () => { typing = false; });
-onState(() => { if (!typing || !document.hasFocus()) render(); });
+/** show a sub tab (called by the main window's navigation) */
+function show(sub) {
+  const k = TABS.some((t) => t[0] === sub) ? sub : tab;
+  if (k !== tab) { tab = k; if (body) body.scrollTop = 0; }
+  render(true);
+}
+window.SettingsView = { mount, render, show, sub: () => tab };
+})();

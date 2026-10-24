@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('azan', {
   on: (ch, fn) => ipcRenderer.on(ch, (_e, ...a) => fn(...a)),
   set: (patch) => ipcRenderer.invoke('settings:set', patch),
   adhkar: () => ipcRenderer.invoke('adhkar:data'),
+  quran: () => ipcRenderer.invoke('quran:data'),
   resUrl: (rel) => ipcRenderer.invoke('res:url', rel),
   searchCity: (q) => ipcRenderer.invoke('location:search', q),
   autoLocate: () => ipcRenderer.invoke('location:auto'),

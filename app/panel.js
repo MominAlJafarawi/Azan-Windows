@@ -70,7 +70,7 @@ function render() {
       h('div', { style: { fontSize: '36px' } }, '📍'),
       h('h2', { class: 'naskh' }, 'محتاج أعرف مدينتك'),
       h('p', { class: 'sec', style: { fontSize: '14px' } }, STATE.locationStatus === 'locating' ? 'عم نحدد موقعك…' : 'ما قدرت أحدد موقعك تلقائياً. اختار مدينتك من الإعدادات.'),
-      h('button', { class: 'pill gold-fill', onclick: () => window.azan.send('open:settings') }, 'اختيار المدينة')));
+      h('button', { class: 'pill gold-fill', onclick: () => window.azan.send('open:settings', 'loc') }, 'اختيار المدينة')));
     sendHeight(); return;
   }
   const ram = Calc.isRamadan(now, s.hijriOffset);
@@ -133,7 +133,7 @@ function render() {
       body.append(h('div', { class: 'p' }, `صفحة ${N(a)}–${N(b)} · سورة ${Calc.surahOnPage(a)}`),
         h('div', { class: 'b', style: k.behind === 0 ? { color: 'var(--gold)' } : {} }, k.behind === 0 ? 'أنت على الموعد، ما شاء الله' : `باقي عليك اليوم ${N(k.behind)} صفحة`),
         h('div', { class: 'btns' },
-          h('button', { class: 'pill', onclick: () => window.azan.send('open:url', Calc.pageUrl(a)) }, '📖 افتح المصحف'),
+          h('button', { class: 'pill', onclick: () => window.azan.send('open:main', { tab: 'quran', page: a }) }, '📖 افتح المصحف'),
           h('button', { class: 'pill gold-fill', onclick: () => window.azan.send('khatma:read', b) }, '✓ قرأت')));
     }
     wrap.append(h('div', { class: 'glass card kh' }, ring(s.khatmaRead / Calc.PAGES), body));
@@ -145,6 +145,7 @@ function render() {
   const zoomBy = (d) => window.azan.set({ panelScale: Math.min(1.5, Math.max(0.8, Math.round((s.panelScale + d) * 10) / 10)) });
   wrap.append(h('div', { class: 'foot' },
     h('button', { title: 'الإعدادات', style: { fontSize: '16px' }, onclick: () => window.azan.send('open:settings') }, '⚙'),
+    h('button', { title: 'المصحف', style: { fontSize: '15px' }, onclick: () => window.azan.send('open:main', { tab: 'quran' }) }, '📖'),
     h('span', { class: 'd' }, Calc.gregorian(now, latin())),
     h('button', { class: 'fb', title: 'الساعة: ٢٤ أو ١٢', onclick: () => window.azan.set({ use24h: !s.use24h }) }, s.use24h ? '٢٤س' : '١٢س'),
     h('button', { class: 'fb', title: 'تصغير النافذة', onclick: () => zoomBy(-0.1) }, 'A−'),

@@ -68,12 +68,12 @@ function render() {
       const [a, b] = k.portion;
       acts.append(h('div', { class: 'wird' }, `وردك: صفحة ${N(a)}–${N(b)} · سورة ${Calc.surahOnPage(a)}`),
         h('div', { class: 'row' },
-          h('button', { class: 'pill', onclick: () => window.azan.send('open:url', Calc.pageUrl(a)) }, '📖 افتح المصحف'),
+          h('button', { class: 'pill', onclick: () => window.azan.send('open:main', { tab: 'quran', page: a }) }, '📖 افتح المصحف'),
           h('button', { class: 'pill gold-fill', onclick: () => { window.azan.send('khatma:read', b); close(); } }, '✓ قرأت')));
     }
   }
   if (E.kind === 'morningAdhkar' || E.kind === 'eveningAdhkar') acts.append(h('div', { class: 'row' }, h('button', { class: 'pill gold-fill', onclick: () => { window.azan.send('open:adhkar', E.kind === 'morningAdhkar' ? 'morning' : 'evening'); close(); } }, '▶ ابدأ')));
-  if (E.kind === 'kahf') acts.append(h('div', { class: 'row' }, h('button', { class: 'pill gold-fill', onclick: () => { window.azan.send('open:url', 'https://quran.com/18'); close(); } }, '📖 اقرأ سورة الكهف')));
+  if (E.kind === 'kahf') acts.append(h('div', { class: 'row' }, h('button', { class: 'pill gold-fill', onclick: () => { window.azan.send('open:main', { tab: 'quran', page: Calc.SURAH_START[17] }); close(); } }, '📖 اقرأ سورة الكهف')));
   if (E.kind === 'update' && STATE.update && STATE.update.available) {
     const u = STATE.update;
     const notes = (u.available.notes || '').slice(0, 260);

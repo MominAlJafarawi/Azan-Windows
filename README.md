@@ -10,9 +10,9 @@
 
 ## ⬇️ التنزيل
 
-- **[Azan-Setup-1.3.1.exe](https://github.com/MominAlJafarawi/Azan-Windows/releases/download/v1.3.1/Azan-Setup-1.3.1.exe)**: ملف التثبيت (حوالي 119 ميجا)
-- [Azan-1.3.1-x64.zip](https://github.com/MominAlJafarawi/Azan-Windows/releases/download/v1.3.1/Azan-1.3.1-x64.zip): نسخة تعمل بلا تثبيت
-- [طريقة التثبيت بالعربي](https://github.com/MominAlJafarawi/Azan-Windows/releases/download/v1.3.1/Install-Guide-Arabic.txt)
+- **[Azan-Setup-1.4.0.exe](https://github.com/MominAlJafarawi/Azan-Windows/releases/download/v1.4.0/Azan-Setup-1.4.0.exe)**: ملف التثبيت (حوالي 119 ميجا)
+- [Azan-1.4.0-x64.zip](https://github.com/MominAlJafarawi/Azan-Windows/releases/download/v1.4.0/Azan-1.4.0-x64.zip): نسخة تعمل بلا تثبيت
+- [طريقة التثبيت بالعربي](https://github.com/MominAlJafarawi/Azan-Windows/releases/download/v1.4.0/Install-Guide-Arabic.txt)
 - يعمل على **ويندوز 10 و11 (64 بت)**. كل ما يحتاجه البرنامج موجود داخله، ولا يحتاج أي برنامج آخر.
 
 > عند التثبيت قد تظهر شاشة زرقاء من ويندوز لأن البرنامج غير موقّع من مايكروسوفت: اضغط **More info** ثم **Run anyway**.
