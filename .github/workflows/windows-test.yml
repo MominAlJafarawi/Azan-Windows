@@ -63,7 +63,7 @@ jobs:
           Wait-Process -Id $p.Id -Timeout 45 -ErrorAction SilentlyContinue
           $log = Get-Content "$d\azan.log" -Raw -Encoding utf8
           Write-Host $log
-          if ($log -notmatch 'wintest: selfcheck checked=20 problems=none') { throw 'self-check failed' }
+          if ($log -notmatch 'wintest: selfcheck checked=21 problems=none') { throw 'self-check failed' }
           if ($log -notmatch 'wintest: quran pages=604 verses=6236 suras=114') { throw 'Quran data failed' }
           if ($log -notmatch 'wintest: mushaf page=1 verses=7') { throw 'Mushaf tab did not render' }
           if ($log -notmatch 'wintest: res quran/quran-uthmani.txt -> ok') { throw 'Quran text missing' }

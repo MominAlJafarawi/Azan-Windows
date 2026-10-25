@@ -45,6 +45,7 @@ const DEFAULTS = {
   adhkarMorning: true, adhkarEvening: true, adhkarAfterPrayer: true, jumuah: true, khutbahBefore: 30, suhoorBefore: 45,
   launchAtLogin: true, deskOn: true, deskSize: 'medium', deskOnTop: false, deskX: null, deskY: null, deskScale: 1, panelScale: 1, autoUpdateCheck: true,
   speakOn: true, speakRepeats: 2, speakInMeeting: true, speakVolume: 0.6, speakTakbir: true,
+  duaOn: true, duaVolume: 0.6, duaRepeats: 1,
   quranPage: 1, quranBookmark: 0,
 };
 const SETTINGS = path.join(DATA, 'settings.json');
@@ -62,6 +63,8 @@ function sanitize(raw) {
   }
   s.deskScale = Math.min(2, Math.max(0.6, Number(s.deskScale) || 1));
   s.panelScale = Math.min(1.5, Math.max(0.8, Number(s.panelScale) || 1));
+  s.duaVolume = Math.min(1, Math.max(0.1, Number(s.duaVolume) || 0.6));
+  s.duaRepeats = Math.min(3, Math.max(1, Math.round(Number(s.duaRepeats) || 1)));
   s.quranPage = Math.min(Quran.PAGES, Math.max(1, Math.round(Number(s.quranPage) || 1)));
   s.quranBookmark = Math.min(Quran.PAGES, Math.max(0, Math.round(Number(s.quranBookmark) || 0)));
   return s;
@@ -253,8 +256,22 @@ async function startAdhan(p) {
   audio({ type: 'adhan', src: fileUrl(resPath(`sounds/${p === 'fajr' ? S.fajrVoice : S.voice}.mp3`)), volume: S.volume });
   updateTray(); broadcast();
 }
-function stopAdhan() { audio({ type: 'stop' }); if (playing) adhanEnded(); }
-function adhanEnded() {
+function stopAdhan() { audio({ type: 'stop' }); duaPlaying = false; if (playing) finishAdhan(); }
+// a full adhan (not sunrise) is followed by "اللهم رب هذه الدعوة التامة"; the card and paused music wait for it
+let duaPlaying = false;
+function adhanEnded(completed) {
+  if (completed && S.duaOn && playing && playing !== 'sunrise') {
+    const p = playing;
+    log(`dua after adhan ${p} x${S.duaRepeats}`);
+    duaPlaying = true;
+    setTimeout(() => { if (playing === p && duaPlaying) audio({ type: 'dua', src: fileUrl(resPath('speech/dua.m4a')), times: S.duaRepeats, volume: S.duaVolume }); }, 1200);
+    return;
+  }
+  finishAdhan();
+}
+function finishAdhan() {
+  log('adhan finished');
+  duaPlaying = false;
   playing = null;
   resumeMedia();
   updateTray(); broadcast();
@@ -570,7 +587,11 @@ ipcMain.on('adhan:stop', () => stopAdhan());
 ipcMain.on('adhan:test', () => { const inp = calcInput(); const p = inp ? Calc.next(inp, new Date(), false).p : 'maghrib'; startAdhan(p); showCard({ kind: 'adhan', p, time: new Date() }, false); });
 ipcMain.on('announce:test', () => { const inp = calcInput(); announce(inp ? Calc.next(inp, new Date(), false).p : 'fajr'); });
 ipcMain.on('voice:preview', (_e, id) => audio({ type: 'preview', src: fileUrl(resPath(`sounds/${id}.mp3`)), volume: S.volume }));
-ipcMain.on('audio:ended', (_e, what) => { if (what === 'adhan' && playing) adhanEnded(); });
+ipcMain.on('audio:ended', (_e, what, ok) => {
+  if (what === 'adhan' && playing && !duaPlaying) adhanEnded(ok === true);
+  else if (what === 'dua' && playing && duaPlaying) finishAdhan();
+});
+ipcMain.on('dua:test', () => audio({ type: 'duaPreview', src: fileUrl(resPath('speech/dua.m4a')), times: S.duaRepeats, volume: S.duaVolume }));
 ipcMain.on('khatma:read', (_e, page) => { const read = Math.min(Calc.PAGES, Math.max(S.khatmaRead, page)); update({ khatmaRead: read, khatmaCount: S.khatmaCount + (read >= Calc.PAGES && S.khatmaRead < Calc.PAGES ? 1 : 0) }); });
 ipcMain.on('khatma:new', (_e, days) => update({ khatmaDays: days || S.khatmaDays, khatmaStart: Date.now(), khatmaRead: 0 }));
 ipcMain.on('open:url', (_e, url) => { if (/^https:\/\//.test(url)) shell.openExternal(url); });
@@ -667,7 +688,7 @@ app.whenReady().then(() => {
       const r = await new Promise((res) => { mushafWait = res; openMain({ tab: 'quran', page: 1 }); setTimeout(() => res(null), 10000); });
       lines.push(r ? `wintest: mushaf page=${r.page} verses=${r.verses}` : 'wintest: mushaf not rendered');
     } catch (e) { lines.push('wintest: quran_error ' + e.message); }
-    for (const rel of ['sounds/makkah.mp3', 'speech/fajr.m4a', 'adhkar.json', 'quran/quran-uthmani.txt', 'quran/quran-meta.json']) lines.push(`wintest: res ${rel} -> ${resPath(rel) ? 'ok' : 'MISSING'}`);
+    for (const rel of ['sounds/makkah.mp3', 'speech/fajr.m4a', 'speech/dua.m4a', 'adhkar.json', 'quran/quran-uthmani.txt', 'quran/quran-meta.json']) lines.push(`wintest: res ${rel} -> ${resPath(rel) ? 'ok' : 'MISSING'}`);
     if (process.env.AZAN_FAKE_VERSION) {
       await checkUpdate(true);
       lines.push(`wintest: update available=${upd.available ? upd.available.version : 'none'} error=${upd.error || 'none'}`);
@@ -692,5 +713,6 @@ app.whenReady().then(() => {
     else if (show.startsWith('card:')) { const k = show.slice(5), miss = k === 'missed'; showCard({ kind: k, p: process.env.AZAN_PRAYER || 'maghrib', time: new Date(Date.now() - (miss ? 1500e3 : 0)), until: miss ? new Date(Date.now() + 3600e3) : null }, !!process.env.AZAN_MEETING); }
     else if (show === 'playing') { startAdhan('maghrib'); setTimeout(showPanel, 600); }
     else if (show === 'announce') announce('fajr');
+    else if (show === 'afteradhan') { playing = 'asr'; adhanEnded(true); }
   }, 1500);
 });

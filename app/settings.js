@@ -119,6 +119,14 @@ function adhanTab() {
         h('div', { class: 'it' }, 'الصوت: ماجد (مسجّل داخل البرنامج)', h('button', { class: 'pill', style: { marginInlineStart: 'auto' }, onclick: () => window.azan.send('announce:test') }, '🔈 اسمع التنبيه')),
       ] : []),
       note('بيشتغل للصلوات اللي حاططها "تنبيه صامت"، ووقت الاجتماعات.')),
+    section('الدعاء بعد الأذان',
+      sw('duaOn', 'بعد ما يخلص الأذان: "اللهم رب هذه الدعوة التامة…"'),
+      ...(s.duaOn ? [
+        sel('duaRepeats', 'عدد المرات', [1, 2, 3].map((n) => [n, N(n)]), Number),
+        h('div', { class: 'it' }, 'علو الصوت', h('input', { type: 'range', min: 0.1, max: 1, step: 0.05, value: s.duaVolume, onchange: (e) => set({ duaVolume: Number(e.target.value) }) })),
+        h('div', { class: 'it' }, 'اسمع الدعاء بالصوت والعدد اللي اخترته', h('button', { class: 'pill', style: { marginInlineStart: 'auto' }, onclick: () => window.azan.send('dua:test') }, '🔈 اسمع الدعاء')),
+      ] : []),
+      note('بيشتغل بس إذا الأذان كمّل للآخر. زر إيقاف الأذان بيوقفه كمان.')),
     section('تجربة', h('div', { class: 'it' }, 'جرّب الأذان كامل متل ما بيطلع وقت الصلاة',
       h('button', { class: 'pill gold-fill', style: { marginInlineStart: 'auto' }, onclick: () => window.azan.send('adhan:test') }, '▶ تجربة الأذان'))),
   ];
@@ -171,7 +179,7 @@ function genTab() {
       note('الفحص بيسأل GitHub عن آخر نسخة بس، وما بيبعت أي معلومات عنك.')); })(),
     section('التشغيل', sw('launchAtLogin', 'يشتغل لحاله لما يفتح ويندوز')),
     section('حول', h('div', { class: 'it' }, 'الإصدار', h('span', { class: 'v' }, STATE.version)),
-      note('أصوات الأذان من مستودع Kiwifu/adhan-mp3 للاستعمال الشخصي. الأذكار من حصن المسلم. نص المصحف: مشروع تنزيل tanzil.net (برخصة CC BY 3.0، بدون أي تعديل). الخط Amiri برخصة OFL. تطوير: مؤمن الجعفراوي.')),
+      note('أصوات الأذان من مستودع Kiwifu/adhan-mp3 للاستعمال الشخصي. الأذكار من حصن المسلم. دعاء ما بعد الأذان من مجموعة Adhan Notifications على archive.org (ملك عام). نص المصحف: مشروع تنزيل tanzil.net (برخصة CC BY 3.0، بدون أي تعديل). الخط Amiri برخصة OFL. تطوير: مؤمن الجعفراوي.')),
   ];
 }
 

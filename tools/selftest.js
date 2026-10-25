@@ -36,9 +36,9 @@ check(/هـ$/.test(C.hijri(new Date(), 0, false)), 'hijri');
 const res = path.join(root, 'res');
 const man = JSON.parse(fs.readFileSync(path.join(res, 'manifest.json'), 'utf8'));
 let bad = Object.entries(man).filter(([f, h]) => crypto.createHash('sha256').update(fs.readFileSync(path.join(res, f))).digest('hex') !== h);
-check(Object.keys(man).length >= 20 && bad.length === 0, `manifest ${Object.keys(man).length} files verified`);
+check(Object.keys(man).length >= 21 && bad.length === 0, `manifest ${Object.keys(man).length} files verified`);
 for (const v of ['makkah', 'makkah_fajr', 'madinah', 'madinah_fajr', 'alafasy', 'alafasy_fajr', 'aqsa', 'abdulbasit']) check(!!man[`sounds/${v}.mp3`], `sound ${v}`);
-for (const s of ['fajr', 'sunrise', 'dhuhr', 'asr', 'maghrib', 'isha', 'iftar']) check(!!man[`speech/${s}.m4a`], `speech ${s}`);
+for (const s of ['fajr', 'sunrise', 'dhuhr', 'asr', 'maghrib', 'isha', 'iftar', 'dua']) check(!!man[`speech/${s}.m4a`], `speech ${s}`);
 const ad = JSON.parse(fs.readFileSync(path.join(res, 'adhkar.json'), 'utf8'));
 check(ad.morning.length > 15 && ad.evening.length > 15 && ad.after.length > 5, 'adhkar');
 { // offline mushaf: Tanzil text shipped verbatim + page data + page slicing
