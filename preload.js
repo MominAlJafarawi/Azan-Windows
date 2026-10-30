@@ -12,4 +12,6 @@ contextBridge.exposeInMainWorld('azan', {
   runCheck: () => ipcRenderer.invoke('check:run'),
   checkUpdate: () => ipcRenderer.invoke('update:check'),
   send: (ch, ...a) => ipcRenderer.send(ch, ...a),
+  // test switch only: AZAN_NOW (an ISO time) together with AZAN_DATA runs the windows at that time
+  fakeNow: process.env.AZAN_DATA && process.env.AZAN_NOW ? process.env.AZAN_NOW : null,
 });

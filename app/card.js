@@ -63,7 +63,7 @@ function render() {
   if (E.kind === 'adhan' && STATE.playing) acts.append(h('div', { class: 'row' }, h('button', { class: 'pill gold-fill', onclick: () => window.azan.send('adhan:stop') }, '⏹ إيقاف الأذان')));
   if (E.kind === 'after') {
     if (s.adhkarAfterPrayer) acts.append(h('div', { class: 'row' }, h('button', { class: 'pill', onclick: () => { window.azan.send('open:adhkar', 'after'); close(); } }, '🤲 أذكار بعد الصلاة')));
-    const k = Calc.khatma(s.khatmaDays, s.khatmaStart, s.khatmaRead, new Date());
+    const k = Calc.khatma(s.khatmaDays, s.khatmaStart, s.khatmaRead, new Date(), s.khatmaBase);
     if (s.khatmaOn && s.khatmaAfterPrayer && k.portion) {
       const [a, b] = k.portion;
       acts.append(h('div', { class: 'wird' }, `وردك: صفحة ${N(a)}–${N(b)} · سورة ${Calc.surahOnPage(a)}`),

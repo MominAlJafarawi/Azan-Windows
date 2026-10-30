@@ -1,18 +1,18 @@
-> **English:** Azan is a prayer times and adhan app for Windows 10 and 11 that runs quietly next to the clock. It calculates accurate prayer times (matching AlAdhan within one minute), pauses Spotify or YouTube during the adhan, switches to a silent spoken alert when your microphone is in use (Zoom, Teams, calls), and includes an animated desktop widget, a Quran reading plan split across the five prayers, and morning and evening adhkar. No ads, no account, no tracking. Also available for [macOS](https://github.com/MominAlJafarawi/Azan).
+> **English:** Azan is a prayer times and adhan app for Windows 10 and 11 that runs quietly next to the clock. It calculates accurate prayer times (matching AlAdhan within one minute), switches to a silent spoken alert when your microphone is in use (Zoom, Teams, calls), and includes an animated desktop widget, a Quran reading plan split across the five prayers, and morning and evening adhkar. No ads, no account, no tracking. Also available for [macOS](https://github.com/MominAlJafarawi/Azan).
 
 <div dir="rtl">
 
 # أذان 🌙 — مواقيت الصلاة لويندوز
 
-**برنامج مواقيت صلاة وأذان يعمل بهدوء بجانب الساعة، بتصميم "ليل فاخر" وويدجت متحرك على سطح المكتب، ويفهم يومك: يوقف الموسيقى وقت الأذان، ويعرف إذا كنت في اجتماع فينبّهك بصمت.**
+**برنامج مواقيت صلاة وأذان يعمل بهدوء بجانب الساعة، بتصميم "ليل فاخر" وويدجت متحرك على سطح المكتب، ويفهم يومك: يعرف إذا كنت في اجتماع فينبّهك بصمت.**
 
 نسخة الماك بنفس الميزات والشكل: [Azan](https://github.com/MominAlJafarawi/Azan)
 
 ## ⬇️ التنزيل
 
-- **[Azan-Setup-1.4.1.exe](https://github.com/MominAlJafarawi/Azan-Windows/releases/download/v1.4.1/Azan-Setup-1.4.1.exe)**: ملف التثبيت (حوالي 119 ميجا)
-- [Azan-1.4.1-x64.zip](https://github.com/MominAlJafarawi/Azan-Windows/releases/download/v1.4.1/Azan-1.4.1-x64.zip): نسخة تعمل بلا تثبيت
-- [طريقة التثبيت بالعربي](https://github.com/MominAlJafarawi/Azan-Windows/releases/download/v1.4.1/Install-Guide-Arabic.txt)
+- **[Azan-Setup-1.5.0.exe](https://github.com/MominAlJafarawi/Azan-Windows/releases/download/v1.5.0/Azan-Setup-1.5.0.exe)**: ملف التثبيت (حوالي 119 ميجا)
+- [Azan-1.5.0-x64.zip](https://github.com/MominAlJafarawi/Azan-Windows/releases/download/v1.5.0/Azan-1.5.0-x64.zip): نسخة تعمل بلا تثبيت
+- [طريقة التثبيت بالعربي](https://github.com/MominAlJafarawi/Azan-Windows/releases/download/v1.5.0/Install-Guide-Arabic.txt)
 - يعمل على **ويندوز 10 و11 (64 بت)**. كل ما يحتاجه البرنامج موجود داخله، ولا يحتاج أي برنامج آخر.
 
 > عند التثبيت قد تظهر شاشة زرقاء من ويندوز لأن البرنامج غير موقّع من مايكروسوفت: اضغط **More info** ثم **Run anyway**.
@@ -28,7 +28,6 @@
 | | |
 |---|---|
 | 🔇 **أذان يحترم اجتماعاتك** | يقرأ سجل ويندوز لمعرفة إن كان الميكروفون مستعملاً (Zoom أو Teams أو مكالمة)، فإن كنت في اجتماع لا يرفع الأذان، بل يظهر تنبيه صامت أو صوت قصير حسب اختيارك. |
-| 🎵 **يوقف الموسيقى ويرجعها** | يوقف ما يعمل في تحكّم الوسائط بويندوز (مثل Spotify ويوتيوب في المتصفح) عند الأذان، ويعيده بعد انتهائه. |
 | 🗣️ **تنبيه صامت ناطق** | يبدأ بـ "الله أكبر، الله أكبر" بصوت الشيخ الذي اخترته، ثم صوت عربي يقول "حان الآن موعد أذان الفجر". التسجيل داخل البرنامج، فلا يحتاج صوتاً عربياً مثبتاً في ويندوز. |
 | 🌌 **تصميم حيّ** | سماء ليلية متحركة فيها نجوم تتلألأ، وهلال ذهبي يتوهّج، وشهاب يمر بين حين وآخر. |
 | 🪟 **ويدجت عائم بحجم تختاره** | تسحبه لأي مكان على سطح المكتب، وتكبّره أو تصغّره بالسحب من أطرافه، فتكبر الكتابة والأرقام معه بنفس النسبة. |

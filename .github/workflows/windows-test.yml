@@ -1,5 +1,5 @@
 # Installs the published Windows installer on a real Windows machine and checks it:
-# self-check of all files, microphone registry read, media (PowerShell) script, prayer times, offline mushaf,
+# self-check of all files, microphone registry read, prayer times, offline mushaf,
 # self-repair of damaged files, and a desktop screenshot. Runs on every new release.
 name: Windows test
 
@@ -67,7 +67,6 @@ jobs:
           if ($log -notmatch 'wintest: quran pages=604 verses=6236 suras=114') { throw 'Quran data failed' }
           if ($log -notmatch 'wintest: mushaf page=1 verses=7') { throw 'Mushaf tab did not render' }
           if ($log -notmatch 'wintest: res quran/quran-uthmani.txt -> ok') { throw 'Quran text missing' }
-          if ($log -notmatch 'wintest: media_script_ok') { throw 'media (PowerShell) script failed' }
           if ($log -notmatch 'wintest: mic_in_use=') { throw 'microphone check failed' }
           if ($log -notmatch 'wintest: res sounds/makkah.mp3 -> ok') { throw 'resources missing' }
           if ($log -notmatch 'wintest: done') { throw 'app did not finish the test' }

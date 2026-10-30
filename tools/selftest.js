@@ -31,6 +31,31 @@ for (const [tz, lat, lon, m, day, ref] of cases) {
 check(C.methodForCountry('EG') === 'egyptian' && C.methodForCountry('DE') === 'mwl', 'method by country');
 const k = C.khatma(30, Date.now() - 2 * 86400000, 0, new Date());
 check(k.dayIndex === 3 && k.target === 61 && k.chunk === 5, 'khatma plan');
+{ // khatma with a base (after "رتّب الختمة من جديد") and base 0 = the old numbers
+  const D = 86400000, now = new Date();
+  const old = (days, start, read) => { const perDay = 604 / days, s = new Date(start), n = new Date(now); s.setHours(0, 0, 0, 0); n.setHours(0, 0, 0, 0);
+    const di = Math.max(1, Math.round((n - s) / D) + 1), target = Math.min(604, Math.ceil(perDay * di)); return { target, chunk: Math.max(1, Math.ceil(perDay / 5)), behind: Math.max(0, target - read) }; };
+  let same = true;
+  for (const days of [7, 10, 30, 40, 365]) for (const ago of [0, 1, 5, 12, 40]) for (const read of [0, 17, 300, 603]) {
+    const a = C.khatma(days, Date.now() - ago * D, read, now), b = old(days, Date.now() - ago * D, read), z = C.khatma(days, Date.now() - ago * D, read, now, 0);
+    if (a.target !== b.target || a.chunk !== b.chunk || a.behind !== b.behind || z.target !== a.target || z.behind !== a.behind) same = false;
+  }
+  check(same, 'khatma base 0 = old plan (target, chunk, behind)');
+  const t1 = C.khatma(20, Date.now(), 404, now, 404);
+  check(t1.perDay === 10 && t1.dayIndex === 1 && t1.target === 414 && t1.chunk === 2 && t1.portion[0] === 405 && t1.portion[1] === 406 && t1.behind === 10 && !t1.replan, 'khatma base 404: day 1 target 414, portion 405-406, behind 10');
+  const t3 = C.khatma(20, Date.now() - 2 * D, 404, now, 404);
+  check(t3.target === 434 && t3.behind === 30 && t3.replan, 'khatma base 404: day 3 target 434, behind 30 -> offer re-plan');
+  const t4 = C.khatma(20, Date.now() - 30 * D, 410, now, 404);
+  check(t4.target === 604 && t4.behind === 194, 'khatma base: target capped at 604');
+  { const d2 = C.khatma(30, Date.now() - D, 0, now), d3 = C.khatma(30, Date.now() - 2 * D, 0, now);
+    check(d2.behind === 41 && !d2.replan && d3.behind === 61 && d3.replan, 'khatma re-plan only when more than two days of reading behind'); }
+  const r = C.khatmaReplan(30, 0, 100);
+  check(r.khatmaBase === 100 && r.khatmaDays === Math.ceil(504 / (604 / 30)), `khatma re-plan: base 100, days ${r.khatmaDays}`);
+  const after = C.khatma(r.khatmaDays, Date.now(), 100, now, r.khatmaBase);
+  check(Math.abs(after.perDay - 604 / 30) < 1 && after.behind === Math.ceil(after.perDay) && !after.replan, 'khatma re-plan keeps the daily pace and starts fresh');
+  const r2 = C.khatmaReplan(r.khatmaDays, r.khatmaBase, 300);
+  check(r2.khatmaBase === 300 && Math.abs((604 - 300) / r2.khatmaDays - after.perDay) < 1, 'khatma re-plan twice keeps the pace');
+}
 check(C.surahOnPage(293) === 'الكهف' && C.juzOfPage(582) === 30, 'surah/juz');
 check(/هـ$/.test(C.hijri(new Date(), 0, false)), 'hijri');
 const res = path.join(root, 'res');

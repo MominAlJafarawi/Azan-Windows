@@ -1,5 +1,5 @@
 // أذان - Windows (Electron). Port of the Mac app: tray, panel, desktop widget, adhan, silent spoken alert,
-// khatma, adhkar, Friday, Ramadan, meeting detection, media pause, self-check and repair.
+// khatma, adhkar, Friday, Ramadan, meeting detection, self-check and repair.
 const { app, BrowserWindow, Tray, Menu, ipcMain, screen, shell, nativeImage, net, powerMonitor, powerSaveBlocker } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -12,6 +12,8 @@ const Quran = require('./app/quran.js');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 const TEST = !!process.env.AZAN_DATA;
+// test switch: AZAN_NOW=<ISO time> (only together with AZAN_DATA) runs the whole app as if it were that time
+if (TEST && process.env.AZAN_NOW) Calc.fakeClock(process.env.AZAN_NOW);
 // On Windows: %APPDATA%\Azan. Anywhere else (testing on the Mac) NEVER the Mac app's folder
 // (~/Library/Application Support/Azan), so the Mac settings can't be overwritten.
 const DATA = process.env.AZAN_DATA
@@ -40,8 +42,8 @@ const DEFAULTS = {
   autoLocation: true, lat: null, lon: null, placeName: '', countryCode: null,
   autoMethod: true, method: 'mwl', school: 'shafi', highLat: 'auto', offsets: [0, 0, 0, 0, 0, 0],
   hijriOffset: 0, latinDigits: false, use24h: true,
-  modes: {}, voice: 'makkah', fajrVoice: 'makkah_fajr', volume: 0.8, preReminder: 10, smartPause: true, meetingSilent: true,
-  khatmaOn: true, khatmaDays: 30, khatmaStart: Date.now(), khatmaRead: 0, khatmaCount: 0, khatmaAfterPrayer: true,
+  modes: {}, voice: 'makkah', fajrVoice: 'makkah_fajr', volume: 0.8, preReminder: 10, meetingSilent: true,
+  khatmaOn: true, khatmaDays: 30, khatmaStart: Date.now(), khatmaRead: 0, khatmaCount: 0, khatmaAfterPrayer: true, khatmaBase: 0,
   adhkarMorning: true, adhkarEvening: true, adhkarAfterPrayer: true, jumuah: true, khutbahBefore: 30, suhoorBefore: 45,
   launchAtLogin: true, deskOn: true, deskSize: 'medium', deskOnTop: false, deskX: null, deskY: null, deskScale: 1, panelScale: 1, autoUpdateCheck: true,
   speakOn: true, speakRepeats: 2, speakInMeeting: true, speakVolume: 0.6, speakTakbir: true,
@@ -67,6 +69,8 @@ function sanitize(raw) {
   s.duaRepeats = Math.min(3, Math.max(1, Math.round(Number(s.duaRepeats) || 1)));
   s.quranPage = Math.min(Quran.PAGES, Math.max(1, Math.round(Number(s.quranPage) || 1)));
   s.quranBookmark = Math.min(Quran.PAGES, Math.max(0, Math.round(Number(s.quranBookmark) || 0)));
+  s.khatmaBase = Math.min(Calc.PAGES - 1, Math.max(0, Math.round(Number(s.khatmaBase) || 0)));
+  s.khatmaDays = Math.min(3650, Math.max(1, Math.round(Number(s.khatmaDays) || 30)));
   return s;
 }
 function loadSettings() {
@@ -210,7 +214,7 @@ async function searchCity(q) {
   return (j.results || []).map((r) => ({ name: [r.name, r.country].filter(Boolean).join('، '), city: r.name, cc: r.country_code, lat: r.latitude, lon: r.longitude }));
 }
 
-// ---------------- meeting (microphone in use) and media pause ----------------
+// ---------------- meeting (microphone in use) ----------------
 function micInUse() {
   return new Promise((resolve) => {
     if (process.platform !== 'win32') return resolve(!!process.env.AZAN_MEETING);
@@ -221,28 +225,6 @@ function micInUse() {
       });
   });
 }
-const PS_MEDIA = (action, ids) => `
-Add-Type -AssemblyName System.Runtime.WindowsRuntime
-$asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | ? { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation\`1' })[0]
-function Await($op, $type) { $t = $asTask.MakeGenericMethod($type).Invoke($null, @($op)); $t.Wait(-1) | Out-Null; $t.Result }
-[Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager,Windows.Media.Control,ContentType=WindowsRuntime] | Out-Null
-$mgr = Await ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager])
-$ids = @(${(ids || []).map((i) => `'${String(i).replace(/'/g, '')}'`).join(',')})
-foreach ($s in $mgr.GetSessions()) {
-  ${action === 'pause'
-    ? "if ($s.GetPlaybackInfo().PlaybackStatus -eq 'Playing') { Await ($s.TryPauseAsync()) ([bool]) | Out-Null; Write-Output $s.SourceAppUserModelId }"
-    : "if ($ids -contains $s.SourceAppUserModelId) { Await ($s.TryPlayAsync()) ([bool]) | Out-Null }"}
-}`;
-function runPS(script) {
-  return new Promise((resolve) => {
-    if (process.platform !== 'win32') return resolve('');
-    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script], { windowsHide: true, timeout: 8000 },
-      (err, out) => { if (err) log('powershell: ' + err.message); resolve(out || ''); });
-  });
-}
-let pausedMedia = [];
-async function pauseMedia() { pausedMedia = (await runPS(PS_MEDIA('pause'))).split(/\r?\n/).map((s) => s.trim()).filter(Boolean); if (pausedMedia.length) log('paused ' + pausedMedia.join(',')); }
-async function resumeMedia() { if (!pausedMedia.length) return; const ids = pausedMedia; pausedMedia = []; await runPS(PS_MEDIA('play', ids)); }
 
 // ---------------- audio (hidden window) ----------------
 let audioWin = null;
@@ -251,7 +233,6 @@ const TAKBIR_END = { makkah: 14.4, makkah_fajr: 10.9, madinah: 9.8, madinah_fajr
 const fileUrl = (p) => (p ? 'file:///' + p.replace(/\\/g, '/').replace(/^\//, '') : null);
 
 async function startAdhan(p) {
-  if (S.smartPause) await pauseMedia();
   playing = p;
   audio({ type: 'adhan', src: fileUrl(resPath(`sounds/${p === 'fajr' ? S.fajrVoice : S.voice}.mp3`)), volume: S.volume });
   updateTray(); broadcast();
@@ -273,7 +254,6 @@ function finishAdhan() {
   log('adhan finished');
   duaPlaying = false;
   playing = null;
-  resumeMedia();
   updateTray(); broadcast();
   if (cardKind === 'adhan') setTimeout(() => closeCard(), 30000);
 }
@@ -295,7 +275,12 @@ function isNewer(a, b) {
 }
 function readState() { try { return JSON.parse(fs.readFileSync(STATE, 'utf8')); } catch (_) { return {}; } }
 function writeState(patch) { try { fs.writeFileSync(STATE, JSON.stringify({ ...readState(), ...patch })); } catch (_) {} }
-async function checkUpdate(force) {
+// a found update is remembered in state.json, so the gold "حدّث هلأ" notice stays after a restart until it is installed
+function restoreUpdate() {
+  const a = readState().updateAvailable;
+  upd.available = a && a.version && a.url && isNewer(a.version, currentVersion()) ? a : null;
+}
+async function checkUpdate(force, quiet) {
   const st = readState();
   if (!force && st.updateLastCheck && Date.now() - st.updateLastCheck < 20 * 3600e3) return;
   upd.checking = true; upd.error = null; broadcast();
@@ -307,10 +292,10 @@ async function checkUpdate(force) {
     const exe = (j.assets || []).find((a) => /^Azan-Setup-.*\.exe$/.test(a.name));
     log(`update check: latest ${v}, current ${currentVersion()}`);
     upd.available = isNewer(v, currentVersion()) && exe ? { version: v, notes: j.body || '', url: exe.browser_download_url, size: exe.size, page: j.html_url } : null;
-    upd.lastCheck = Date.now(); writeState({ updateLastCheck: upd.lastCheck });
-    if (upd.available && (force || st.updateSnoozed !== v)) showCard({ kind: 'update', time: new Date() }, false);
+    upd.lastCheck = Date.now(); writeState({ updateLastCheck: upd.lastCheck, updateAvailable: upd.available });
+    if (upd.available && !quiet && (force || st.updateSnoozed !== v)) showCard({ kind: 'update', time: new Date() }, false);
   } catch (e) { upd.error = 'ما قدرت أوصل لـGitHub: ' + e.message; log('update check failed ' + e.message); }
-  upd.checking = false; broadcast();
+  upd.checking = false; updateTray(); broadcast();
 }
 async function installUpdate() {
   const u = upd.available; if (!u || upd.progress != null) return;
@@ -379,7 +364,8 @@ function markPast() {
     fired.add(e.key);
   }
 }
-function saveFired() { try { fs.writeFileSync(STATE, JSON.stringify({ fired: [...fired].slice(-200) })); } catch (_) {} }
+// merge, so the update keys in the same file (last check, snooze, available update) are kept
+function saveFired() { writeState({ fired: [...fired].slice(-200) }); }
 
 async function fire(e) {
   log(`event ${e.kind} ${e.p || ''}`);
@@ -435,10 +421,24 @@ const base = (extra) => ({ frame: false, transparent: true, resizable: false, sh
 let tray = null, panel = null, panelPinned = false, panelPlacing = false;
 let desk = null, card = null, cardKind = null, mainWin = null;
 
-function trayIcon() {
+let trayDot = null;   // which icon the tray shows now (with or without the gold update dot)
+function trayIcon(dot) {
   const p = path.join(APP, 'img', 'tray.png');
   const img = nativeImage.createFromPath(p);
-  return img.isEmpty() ? nativeImage.createEmpty() : img.resize({ width: 16, height: 16 });
+  if (img.isEmpty()) return nativeImage.createEmpty();
+  if (!dot) return img.resize({ width: 16, height: 16 });
+  // same icon with a small gold dot (navy ring) in the top corner: an update is ready
+  const S2 = 32, small = img.resize({ width: S2, height: S2 }), px = Buffer.from(small.toBitmap());
+  const cx = 24.5, cy = 7.5, r = 6, ring = 8.2;
+  const cl = (v) => Math.min(1, Math.max(0, v)), GOLD = [0x66, 0xc2, 0xeb], NAVY = [0x2f, 0x14, 0x10];   // BGRA order
+  for (let y = 0; y < S2; y++) for (let x = 0; x < S2; x++) {
+    const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy), all = cl(ring + 0.5 - d), gold = cl(r + 0.5 - d);
+    if (!all) continue;
+    const i = (y * S2 + x) * 4;   // premultiplied "over"
+    for (let c = 0; c < 3; c++) px[i + c] = Math.round(GOLD[c] * gold + NAVY[c] * (all - gold) + px[i + c] * (1 - all));
+    px[i + 3] = Math.round(255 * all + px[i + 3] * (1 - all));
+  }
+  return nativeImage.createFromBitmap(px, { width: S2, height: S2 }).resize({ width: 16, height: 16 });
 }
 function updateTray() {
   if (!tray) return;
@@ -446,8 +446,12 @@ function updateTray() {
   let tip = 'أذان';
   if (playing) tip = `أذان ${Calc.AR[playing]} شغّال · اكبس لإيقافه`;
   else if (inp) { const n = Calc.next(inp, new Date()); tip = `${Calc.AR[n.p]} ${Calc.countdown((n.t - Date.now()) / 1000, S.latinDigits)} · ${Calc.time(n.t, S.latinDigits, S.use24h)}`; }
+  const dot = !!upd.available;
+  if (dot) tip += `\nنسخة جديدة متوفرة (${upd.available.version})`;
+  if (dot !== trayDot) { trayDot = dot; tray.setImage(trayIcon(dot)); }
   tray.setToolTip(tip);
 }
+function quitApp() { app.isQuitting = true; app.quit(); }
 function trayMenu() {
   return Menu.buildFromTemplate([
     { label: 'فتح أذان', click: () => showPanel() },
@@ -459,8 +463,9 @@ function trayMenu() {
     { label: 'أذكار المساء', click: () => openMain({ tab: 'adhkar', kind: 'evening', fresh: true }) },
     { label: 'الإعدادات', click: () => openMain({ tab: 'settings' }) },
     { label: S.deskOn ? 'إخفاء الويدجت' : 'إظهار الويدجت', click: () => update({ deskOn: !S.deskOn }) },
+    ...(upd.available ? [{ type: 'separator' }, { label: `حدّث لنسخة ${upd.available.version}`, enabled: upd.progress == null, click: () => installUpdate() }] : []),
     { type: 'separator' },
-    { label: 'إنهاء', click: () => { app.isQuitting = true; app.quit(); } },
+    { label: 'إنهاء البرنامج', click: () => quitApp() },
   ]);
 }
 
@@ -553,12 +558,15 @@ function openMain(p = { tab: 'home' }) {
     return mainWin;
   }
   const wa = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
-  const W = Math.min(680, wa.width - 40), H = Math.min(780, wa.height - 40);
+  // AZAN_MAINW (tests only) opens the window narrower, e.g. at the minimum width
+  const W = Math.min((TEST && Number(process.env.AZAN_MAINW)) || 680, wa.width - 40), H = Math.min(780, wa.height - 40);
   mainWin = new BrowserWindow(base({ width: W, height: H, x: Math.round(wa.x + (wa.width - W) / 2), y: Math.round(wa.y + (wa.height - H) / 2),
     title: 'أذان', transparent: false, backgroundColor: '#0b1030', resizable: true, minimizable: true, maximizable: true,
     minWidth: Math.min(560, W), minHeight: Math.min(600, H) }));
   mainWin.loadFile(path.join(APP, 'main.html'), { query: { nav: JSON.stringify(p) } });
   mainWin.once('ready-to-show', () => { if (mainWin) { mainWin.show(); mainWin.focus(); } });
+  // tests only: AZAN_SCROLL=<css selector> scrolls that box to the end (to look at the bottom of a long page)
+  if (TEST && process.env.AZAN_SCROLL) mainWin.webContents.once('did-finish-load', () => setTimeout(() => mainWin && mainWin.webContents.executeJavaScript(`document.querySelectorAll(${JSON.stringify(process.env.AZAN_SCROLL)}).forEach((e) => { e.scrollTop = 1e6; })`), 1500));
   mainWin.on('closed', () => { mainWin = null; });
   return mainWin;
 }
@@ -593,7 +601,10 @@ ipcMain.on('audio:ended', (_e, what, ok) => {
 });
 ipcMain.on('dua:test', () => audio({ type: 'duaPreview', src: fileUrl(resPath('speech/dua.m4a')), times: S.duaRepeats, volume: S.duaVolume }));
 ipcMain.on('khatma:read', (_e, page) => { const read = Math.min(Calc.PAGES, Math.max(S.khatmaRead, page)); update({ khatmaRead: read, khatmaCount: S.khatmaCount + (read >= Calc.PAGES && S.khatmaRead < Calc.PAGES ? 1 : 0) }); });
-ipcMain.on('khatma:new', (_e, days) => update({ khatmaDays: days || S.khatmaDays, khatmaStart: Date.now(), khatmaRead: 0 }));
+ipcMain.on('khatma:new', (_e, days) => update({ khatmaDays: days || S.khatmaDays, khatmaStart: Date.now(), khatmaRead: 0, khatmaBase: 0 }));
+// "↻ رتّب الختمة من جديد": a new plan from today, from the page already reached, at the same pages per day
+ipcMain.on('khatma:replan', () => { if (S.khatmaRead < Calc.PAGES) update({ ...Calc.khatmaReplan(S.khatmaDays, S.khatmaBase, S.khatmaRead), khatmaStart: Date.now() }); });
+ipcMain.on('app:quit', () => quitApp());
 ipcMain.on('open:url', (_e, url) => { if (/^https:\/\//.test(url)) shell.openExternal(url); });
 ipcMain.on('open:main', (_e, p) => openMain(p && typeof p === 'object' ? p : { tab: 'home' }));
 ipcMain.on('open:settings', (_e, sub) => openMain({ tab: 'settings', sub }));
@@ -658,7 +669,8 @@ app.whenReady().then(() => {
   saveSettings();
   audioWin = new BrowserWindow({ show: false, webPreferences: { preload: PRELOAD, contextIsolation: true, sandbox: false } });
   audioWin.loadFile(path.join(APP, 'audio.html'));
-  tray = new Tray(trayIcon());
+  restoreUpdate();
+  tray = new Tray(trayIcon(false)); trayDot = false;
   tray.on('click', () => showPanel());
   tray.on('right-click', () => tray.popUpContextMenu(trayMenu()));
   if (S.autoLocation || S.lat == null) autoLocate();
@@ -669,6 +681,12 @@ app.whenReady().then(() => {
   powerMonitor.on('resume', () => setTimeout(tick, 1500));
   setInterval(() => { if (S.autoLocation) autoLocate(); }, 3 * 3600e3);
   setTimeout(() => { if (S.autoUpdateCheck && !TEST) checkUpdate(false); }, 30000);
+  // testing the update notice on the Mac: AZAN_FAKE_VERSION=1.0.0 asks GitHub (real latest looks newer, no card);
+  // AZAN_FAKE_UPDATE=9.9.9 pretends without network. Add AZAN_UPDATE_DRYRUN=1 so nothing is ever installed.
+  if (TEST && process.env.AZAN_FAKE_UPDATE) { upd.available = { version: process.env.AZAN_FAKE_UPDATE, notes: '', url: 'https://github.com/' + UPDATE_REPO + '/releases', size: 0, page: 'https://github.com/' + UPDATE_REPO + '/releases' }; updateTray(); broadcast(); }
+  else if (TEST && process.env.AZAN_FAKE_VERSION && !process.env.AZAN_WINTEST) checkUpdate(true, true);
+  if (TEST && process.env.AZAN_TRAYPNG) fs.writeFileSync(process.env.AZAN_TRAYPNG, trayIcon(true).toPNG());   // look at the update tray icon
+  if (TEST && process.env.AZAN_UPDATE_CLICK) setTimeout(() => installUpdate(), 4000);   // as if "حدّث هلأ" was pressed
   setInterval(() => { if (S.autoUpdateCheck && !TEST) checkUpdate(false); }, 6 * 3600e3);
   log(`started ${app.getVersion()}`);
   // automatic test on a real Windows machine (GitHub Actions): logs results, then quits
@@ -679,7 +697,6 @@ app.whenReady().then(() => {
     lines.push(`wintest: tray=${!!tray} desk=${!!desk} audioWin=${!!audioWin}`);
     try { const id = powerSaveBlocker.start('prevent-app-suspension'); lines.push(`wintest: sleep_hold=${powerSaveBlocker.isStarted(id)}`); powerSaveBlocker.stop(id); } catch (e) { lines.push('wintest: sleep_hold_error ' + e.message); }
     try { lines.push(`wintest: mic_in_use=${await micInUse()}`); } catch (e) { lines.push('wintest: mic_error ' + e.message); }
-    try { const out = await runPS(PS_MEDIA('pause')); lines.push(`wintest: media_script_ok paused=[${out.trim()}]`); } catch (e) { lines.push('wintest: media_error ' + e.message); }
     const inp = calcInput();
     if (inp) { const t = Calc.compute(inp, new Date()); lines.push('wintest: times ' + Calc.PRAYERS.map((p) => `${p}=${t[p] ? t[p].toISOString().slice(11, 16) : '-'}`).join(' ')); }
     try {

@@ -105,8 +105,7 @@ function adhanTab() {
     section('لكل صلاة', Calc.PRAYERS.map((p) => h('div', { class: 'it' }, Calc.AR[p],
       h('select', { onchange: (e) => set({ modes: { ...s.modes, [p]: e.target.value } }) }, ['adhan', 'silent', 'off'].map((m) => h('option', { value: m, selected: modeOf(p) === m }, MODE_AR[m])))))),
     section('التنبيه قبل الأذان', sel('preReminder', 'قبلها بـ', [[0, 'بدون'], ...[5, 10, 15, 20, 30].map((m) => [m, `${N(m)} دقائق`])], Number)),
-    section('الأذان الذكي',
-      sw('smartPause', 'إيقاف الموسيقى والفيديو وقت الأذان ثم إرجاعها'),
+    section('الاجتماعات',
       sw('meetingSilent', 'وقت الاجتماعات (المايك شغّال): تنبيه صامت بدل الأذان'),
       note('ويندوز بيسجّل مين عم يستعمل المايك، والبرنامج بيقرأ هالسجل وقت الأذان بس.')),
     section('التنبيه الصامت بالكلام',
@@ -132,10 +131,12 @@ function adhanTab() {
   ];
 }
 function khatmaTab() {
-  const s = S(), k = Calc.khatma(s.khatmaDays, s.khatmaStart, s.khatmaRead, new Date());
+  const s = S(), k = Calc.khatma(s.khatmaDays, s.khatmaStart, s.khatmaRead, new Date(), s.khatmaBase);
   return [
     section('خطة الختمة', sw('khatmaOn', 'تفعيل ورد القرآن'),
-      sel('khatmaDays', 'أختم خلال', [7, 10, 15, 20, 30, 40, 60, 90, 120, 365].map((d) => [d, `${N(d)} يوم`]), Number),
+      // after "رتّب الختمة من جديد" the number of days can be any number, so it is added to the list
+      sel('khatmaDays', s.khatmaBase ? `أختم الباقي (من صفحة ${N(s.khatmaBase + 1)}) خلال` : 'أختم خلال',
+        [...new Set([7, 10, 15, 20, 30, 40, 60, 90, 120, 365, s.khatmaDays])].sort((a, b) => a - b).map((d) => [d, `${N(d)} يوم`]), Number),
       h('div', { class: 'it' }, 'ورد اليوم تقريباً', h('span', { class: 'v' }, `${N(Math.ceil(k.perDay))} صفحة، يعني ${N(k.chunk)} بعد كل صلاة`)),
       h('div', { class: 'it' }, 'وصلت لصفحة', h('span', { class: 'v' }, `${N(s.khatmaRead)} (سورة ${Calc.surahOnPage(Math.max(1, s.khatmaRead))})`)),
       s.khatmaCount ? h('div', { class: 'it' }, 'ختمات مكتملة', h('span', { class: 'v' }, N(s.khatmaCount))) : null,
@@ -145,6 +146,8 @@ function khatmaTab() {
         h('button', { onclick: () => set({ khatmaRead: Math.max(0, s.khatmaRead - 1) }) }, '−'),
         h('span', { class: 'num', style: { minWidth: '50px', textAlign: 'center' } }, N(s.khatmaRead)),
         h('button', { onclick: () => set({ khatmaRead: Math.min(Calc.PAGES, s.khatmaRead + 1) }) }, '+'))),
+      k.replan ? h('div', { class: 'it' }, `متأخر ${N(k.behind)} صفحة`, h('button', { class: 'pill', style: { marginInlineStart: 'auto' }, onclick: () => window.azan.send('khatma:replan') }, '↻ رتّب الختمة من جديد')) : null,
+      k.replan ? note(`بيبدأ خطة جديدة من اليوم، من الصفحة اللي وصلتلها، بنفس الورد (${N(Math.ceil(k.perDay))} صفحة باليوم).`) : null,
       h('div', { class: 'it' }, h('button', { class: 'pill', style: { marginInlineStart: 'auto' }, onclick: () => window.azan.send('khatma:new') }, 'ابدأ ختمة جديدة من اليوم'))),
   ];
 }
@@ -173,11 +176,15 @@ function genTab() {
       h('div', { class: 'it' }, `آخر فحص: ${fmtTime(new Date(r.date))}`, h('button', { class: 'pill', style: { marginInlineStart: 'auto' }, onclick: () => window.azan.runCheck() }, '🩺 افحص وصلّح الآن'))),
     (() => { const u = STATE.update || {}; return section('التحديثات', sw('autoUpdateCheck', 'افحص مرة باليوم إذا في نسخة جديدة'),
       h('div', { class: 'it' }, h('span', {}, `نسختك: ${STATE.version}`, u.available ? h('span', { class: 'ok' }, ` · في نسخة جديدة: ${u.available.version}`) : null),
-        u.available ? h('button', { class: 'pill gold-fill', style: { marginInlineStart: 'auto' }, onclick: () => window.azan.send('update:install') }, u.progress != null ? 'عم ينزّل…' : '⬇ حدّث هلأ')
+        u.available ? (u.progress != null ? h('span', { class: 'v' }, u.progress < 1 ? `عم ينزّل… ${N(Math.round(u.progress * 100))}٪` : 'عم يثبّت، وبيرجع يفتح لحاله…')
+          : h('button', { class: 'pill gold-fill', style: { marginInlineStart: 'auto' }, onclick: () => window.azan.send('update:install') }, '⬇ حدّث هلأ'))
           : h('button', { class: 'pill', style: { marginInlineStart: 'auto' }, onclick: () => window.azan.checkUpdate() }, u.checking ? 'عم يفحص…' : '↻ افحص الآن')),
+      u.available && u.progress != null ? h('div', { style: { padding: '0 16px 12px' } }, bar(u.progress)) : null,
       u.error ? note(u.error, true) : null,
       note('الفحص بيسأل GitHub عن آخر نسخة بس، وما بيبعت أي معلومات عنك.')); })(),
-    section('التشغيل', sw('launchAtLogin', 'يشتغل لحاله لما يفتح ويندوز')),
+    section('التشغيل', sw('launchAtLogin', 'يشتغل لحاله لما يفتح ويندوز'),
+      h('div', { class: 'it' }, 'بيسكّر أذان كله: لا أذان ولا تنبيهات لحد ما تفتحه',
+        h('button', { class: 'pill', style: { marginInlineStart: 'auto', flex: 'none' }, onclick: () => window.azan.send('app:quit') }, '⏻ إنهاء البرنامج'))),
     section('حول', h('div', { class: 'it' }, 'الإصدار', h('span', { class: 'v' }, STATE.version)),
       note('أصوات الأذان من مستودع Kiwifu/adhan-mp3 للاستعمال الشخصي. الأذكار من حصن المسلم. دعاء ما بعد الأذان من مجموعة Adhan Notifications على archive.org (ملك عام). نص المصحف: مشروع تنزيل tanzil.net (برخصة CC BY 3.0، بدون أي تعديل). الخط Amiri برخصة OFL. تطوير: مؤمن الجعفراوي.')),
   ];

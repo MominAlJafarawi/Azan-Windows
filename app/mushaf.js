@@ -20,7 +20,7 @@ document.head.append(h('style', {}, `
   .v-quran .hit:hover, .v-quran .hit.sel { background: rgba(235,194,102,.18); }
   .v-quran .hit .nm { font-family: var(--naskh); font-size: 19px; font-weight: 700; }
   .v-quran .hit .pg { margin-inline-start: auto; color: var(--sec); font-size: 13px; }
-  .v-quran .pagebox { position: relative; flex: 1; min-height: 0; overflow-y: auto; padding: 22px 26px; border-radius: 18px; background: rgba(9,14,38,.85); backdrop-filter: blur(18px); border: 1px solid rgba(235,194,102,.35); box-shadow: 0 4px 14px rgba(0,0,0,.22); }
+  .v-quran .pagebox { position: relative; flex: 1; min-height: 0; overflow-y: auto; padding: 22px 26px; border-radius: 18px; background: rgba(9,14,38,.94); backdrop-filter: blur(18px); border: 1px solid rgba(235,194,102,.35); box-shadow: 0 4px 14px rgba(0,0,0,.22); }
   .v-quran .text { color: #fbf1d6; font-family: var(--naskh); font-size: 27px; line-height: 2.1; text-align: justify; text-align-last: start; user-select: text; }
   .v-quran .text .n { color: var(--gold); font-size: 23px; white-space: nowrap; }
   .v-quran .shdr { text-align: center; font-family: var(--naskh); font-weight: 700; font-size: 23px; color: var(--gold); border: 1px solid rgba(235,194,102,.55); border-radius: 12px; padding: 4px 0; margin: 4px 0 6px;
@@ -114,7 +114,7 @@ function drawWird() {
   const s = S();
   if (!s.khatmaOn) { wirdRow.style.display = 'none'; return; }
   wirdRow.style.display = '';
-  const k = Calc.khatma(s.khatmaDays, s.khatmaStart, s.khatmaRead, new Date());
+  const k = Calc.khatma(s.khatmaDays, s.khatmaStart, s.khatmaRead, new Date(), s.khatmaBase);
   if (k.finished) {
     wirdRow.replaceChildren(h('div', { class: 'w' }, 'ختمت القرآن، تقبّل الله منك'),
       h('button', { class: 'pill gold-fill', onclick: () => window.azan.send('khatma:new') }, 'ابدأ ختمة جديدة'));
@@ -146,7 +146,7 @@ function draw() {
   window.azan.send('mushaf:rendered', { page, index, verses: index ? 0 : Quran.pageVerses(Q, page).length });
 }
 function drawMeta0() { if (!STATE) return; bmBtn.replaceChildren('🔖 علامتي'); }
-const sigOf = () => { const s = S(); return [s.latinDigits, s.khatmaOn, s.khatmaDays, s.khatmaStart, s.khatmaRead, s.quranBookmark].join('|'); };
+const sigOf = () => { const s = S(); return [s.latinDigits, s.khatmaOn, s.khatmaDays, s.khatmaStart, s.khatmaRead, s.khatmaBase, s.quranBookmark].join('|'); };
 /** state broadcasts arrive every few seconds: only redraw when something shown here changed */
 function render() { if (!Q || !STATE || !el) return; if (sigOf() !== sig) { const t = box.scrollTop; draw(); if (!index) box.scrollTop = t; } }
 

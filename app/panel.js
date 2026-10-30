@@ -18,29 +18,29 @@ document.head.append(h('style', {}, `
   .stop b { font-family: var(--naskh); font-size: 18px; display: block; }
   .stop .x { margin-inline-start: auto; font-size: 26px; }
   .list { padding: 8px; display: flex; flex-direction: column; gap: 4px; }
-  .row { display: flex; align-items: center; gap: 12px; padding: 7px 12px; border-radius: 12px; border: 1.2px solid transparent; }
+  .row { display: flex; align-items: center; gap: 9px; padding: 5px 10px; border-radius: 12px; border: 1.2px solid transparent; min-height: 42px; }
   .row.next { background: var(--gold-soft); border-color: rgba(235,194,102,.7); }
   .row.past { opacity: .55; }
-  .row .ic { width: 24px; text-align: center; font-size: 15px; }
-  .row .nm { font-family: var(--naskh); font-size: 20px; }
+  .row .ic { width: 22px; text-align: center; font-size: 15px; flex: none; }
+  .row .nm { font-family: var(--naskh); font-size: 20px; white-space: nowrap; }
   .row.next .nm { font-weight: 700; }
-  .badge { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: var(--gold); color: var(--ink); }
-  .row .tm { margin-inline-start: auto; font-size: 17px; font-weight: 500; }
-  .row.next .tm { font-weight: 700; }
-  .mode { width: 30px; height: 30px; border-radius: 50%; background: rgba(247,235,204,.1); font-size: 13px; }
-  .mode.off { opacity: .5; }
+  .badge { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: var(--gold); color: var(--ink); white-space: nowrap; }
+  .row .tm { margin-inline-start: auto; font-size: 17px; font-weight: 600; }
+  .row.next .tm { font-weight: 700; color: var(--gold); }
+  .updrow { display: flex; justify-content: center; margin-top: -4px; }
   .kh { display: flex; gap: 14px; align-items: center; }
   .ring { width: 56px; height: 56px; flex: none; }
   .kh h3 { font-family: var(--naskh); font-size: 20px; }
   .kh .p { font-size: 13px; font-weight: 600; margin-top: 4px; }
   .kh .b { font-size: 12px; color: var(--sec); margin-top: 2px; }
-  .kh .btns { display: flex; gap: 8px; margin-top: 8px; }
+  .kh .btns { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
   .adhkar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
   .adhkar button { padding: 12px 0; display: flex; flex-direction: column; align-items: center; gap: 4px; border-radius: 16px; }
   .adhkar .em { font-size: 18px; } .adhkar .t { font-family: var(--naskh); font-weight: 700; font-size: 16px; }
-  .foot { display: flex; align-items: center; gap: 6px; color: var(--sec); font-size: 13px; padding: 2px 4px 0; }
-  .foot .d { margin: 0 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .fb { padding: 4px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; background: rgba(247,235,204,.1); border: 1px solid rgba(235,194,102,.35); white-space: nowrap; }
+  .foot { display: flex; align-items: center; gap: 6px; color: var(--sec); font-size: 14px; padding: 4px 0 0; border-top: 1px solid rgba(235,194,102,.15); padding-top: 12px; }
+  .foot .d { margin-inline-start: auto; text-align: end; font-size: 13px; line-height: 1.3; white-space: nowrap; min-width: 0; }
+  .fb { height: 34px; padding: 0 10px; border-radius: 999px; font-size: 14px; font-weight: 700; color: var(--text); background: rgba(247,235,204,.1); border: 1px solid rgba(235,194,102,.35); white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; flex: none; }
+  .fb:hover { background: rgba(247,235,204,.18); }
   .ram h3 { font-family: var(--naskh); color: var(--gold); font-size: 20px; }
   .ram .stats { display: flex; gap: 24px; margin-top: 8px; } .ram small { color: var(--sec); font-size: 12px; } .ram b { display: block; font-size: 20px; }
   .noloc { padding: 40px 30px; text-align: center; display: flex; flex-direction: column; gap: 12px; align-items: center; }
@@ -52,14 +52,6 @@ const content = h('div', { class: 'content' });
 frame.append(content);
 root.append(frame);
 let skyMounted = false;
-
-function ring(v) {
-  const r = 24, c = 2 * Math.PI * r;
-  const svg = `<svg class="ring" viewBox="0 0 56 56"><circle cx="28" cy="28" r="${r}" fill="none" stroke="rgba(247,235,204,.14)" stroke-width="5"/>
-    <circle cx="28" cy="28" r="${r}" fill="none" stroke="#ebc266" stroke-width="5" stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - Math.max(0.02, v))}" transform="rotate(-90 28 28)"/>
-    <text x="28" y="33" text-anchor="middle" font-size="13" font-weight="700" fill="#f7ebcc">${N(Math.round(v * 100))}٪</text></svg>`;
-  const d = h('div'); d.innerHTML = svg; return d.firstChild;
-}
 
 function render() {
   if (!STATE) return;
@@ -82,35 +74,21 @@ function render() {
       h('span', { class: 'x' }, '⏹')));
   }
   // header
-  const nx = Calc.next(inp, now);
-  const title = nx.p === 'sunrise' ? 'الشروق' : (nx.p === 'maghrib' && ram ? 'الإفطار' : `صلاة ${Calc.AR[nx.p]}`);
+  const { nx, title, at } = nextInfo(inp, now);
   wrap.append(h('div', { class: 'top' },
     h('span', { class: 'place glass' }, '📍 ', s.placeName || 'موقعك'),
     h('span', { class: 'hijri' }, Calc.hijri(now, s.hijriOffset, latin())),
-    h('button', { class: 'icon-btn', title: 'إغلاق', onclick: () => window.azan.send('panel:close') }, '✕')));
+    h('button', { class: 'icon-btn', title: 'إخفاء اللوحة', onclick: () => window.azan.send('panel:close') }, '✕')));
+  const pill = updatePill(true);
+  if (pill) wrap.append(h('div', { class: 'updrow' }, pill));
   wrap.append(h('div', { class: 'head' },
     h('h1', {}, title),
     h('div', { class: 'cd' }, Calc.countdownLong((nx.t - now) / 1000, latin())),
     bar(progress(inp, now)),
-    h('div', { class: 'at' }, `الأذان الساعة ${fmtTime(nx.t)}`)));
+    h('div', { class: 'at num' }, at)));
   // prayers
   const t = Calc.compute(inp, now);
-  const list = h('div', { class: 'list glass' });
-  for (const p of Calc.PRAYERS) {
-    const next = p === nx.p && isToday(nx.t);
-    const past = t[p] && t[p] <= now && !next;
-    const m = modeOf(p);
-    list.append(h('div', { class: `row${next ? ' next' : ''}${past ? ' past' : ''}` },
-      h('span', { class: 'ic' }, ICON[p]),
-      h('span', { class: 'nm' }, Calc.AR[p]),
-      next ? h('span', { class: 'badge' }, 'التالية') : null,
-      h('span', { class: 'tm num' }, t[p] ? fmtTime(t[p]) : '--'),
-      h('button', { class: `mode${m === 'off' ? ' off' : ''}`, title: MODE_AR[m], onclick: () => {
-        const order = ['adhan', 'silent', 'off'];
-        window.azan.set({ modes: { ...s.modes, [p]: order[(order.indexOf(m) + 1) % 3] } });
-      } }, MODE_ICON[m])));
-  }
-  wrap.append(list);
+  wrap.append(prayerList(inp, now, nx));
   // ramadan
   if (ram) {
     const tom = Calc.compute(inp, new Date(+now + 86400000));
@@ -122,35 +100,21 @@ function render() {
         imsak ? h('div', {}, h('small', {}, 'الإمساك'), h('b', {}, fmtTime(imsak))) : null)));
   }
   // khatma
-  if (s.khatmaOn) {
-    const k = Calc.khatma(s.khatmaDays, s.khatmaStart, s.khatmaRead, now);
-    const body = h('div', { style: { flex: '1' } }, h('h3', {}, 'وردي من القرآن'));
-    if (k.finished) {
-      body.append(h('div', { class: 'p' }, 'ختمت القرآن، تقبّل الله منك'),
-        h('div', { class: 'btns' }, h('button', { class: 'pill gold-fill', onclick: () => window.azan.send('khatma:new') }, 'ابدأ ختمة جديدة')));
-    } else {
-      const [a, b] = k.portion;
-      body.append(h('div', { class: 'p' }, `صفحة ${N(a)}–${N(b)} · سورة ${Calc.surahOnPage(a)}`),
-        h('div', { class: 'b', style: k.behind === 0 ? { color: 'var(--gold)' } : {} }, k.behind === 0 ? 'أنت على الموعد، ما شاء الله' : `باقي عليك اليوم ${N(k.behind)} صفحة`),
-        h('div', { class: 'btns' },
-          h('button', { class: 'pill', onclick: () => window.azan.send('open:main', { tab: 'quran', page: a }) }, '📖 افتح المصحف'),
-          h('button', { class: 'pill gold-fill', onclick: () => window.azan.send('khatma:read', b) }, '✓ قرأت')));
-    }
-    wrap.append(h('div', { class: 'glass card kh' }, ring(s.khatmaRead / Calc.PAGES), body));
-  }
+  if (s.khatmaOn) wrap.append(khatmaCard((page) => window.azan.send('open:main', { tab: 'quran', page })));
   // adhkar
   wrap.append(h('div', { class: 'adhkar' },
     [['morning', '🌅', 'الصباح'], ['evening', '🌇', 'المساء'], ['after', '🤲', 'بعد الصلاة']].map(([k, em, t2]) =>
       h('button', { class: 'glass', onclick: () => window.azan.send('open:adhkar', k) }, h('span', { class: 'em' }, em), h('span', { class: 't' }, t2)))));
   const zoomBy = (d) => window.azan.set({ panelScale: Math.min(1.5, Math.max(0.8, Math.round((s.panelScale + d) * 10) / 10)) });
+  // footer: big buttons, no quit here ("إنهاء البرنامج" is in the tray's right-click menu and in Settings › عام)
   wrap.append(h('div', { class: 'foot' },
-    h('button', { title: 'الإعدادات', style: { fontSize: '16px' }, onclick: () => window.azan.send('open:settings') }, '⚙'),
-    h('button', { title: 'المصحف', style: { fontSize: '15px' }, onclick: () => window.azan.send('open:main', { tab: 'quran' }) }, '📖'),
-    h('span', { class: 'd' }, Calc.gregorian(now, latin())),
-    h('button', { class: 'fb', title: 'الساعة: ٢٤ أو ١٢', onclick: () => window.azan.set({ use24h: !s.use24h }) }, s.use24h ? '٢٤س' : '١٢س'),
-    h('button', { class: 'fb', title: 'تصغير النافذة', onclick: () => zoomBy(-0.1) }, 'A−'),
-    h('button', { class: 'fb', title: 'تكبير النافذة', onclick: () => zoomBy(0.1) }, 'A+'),
-    h('button', { title: 'إغلاق النافذة', onclick: () => window.azan.send('panel:close') }, '⏻')));
+    h('button', { class: 'fb', title: 'الإعدادات', onclick: () => window.azan.send('open:settings') }, '⚙️ الإعدادات', STATE.update && STATE.update.available ? h('i', { class: 'gdot' }) : null),
+    h('button', { class: 'fb num', title: 'الساعة: ٢٤ أو ١٢', onclick: () => window.azan.set({ use24h: !s.use24h }) }, s.use24h ? '٢٤س' : '١٢س'),
+    h('button', { class: 'fb', title: 'تصغير اللوحة', onclick: () => zoomBy(-0.1) }, 'A−'),
+    h('button', { class: 'fb', title: 'تكبير اللوحة', onclick: () => zoomBy(0.1) }, 'A+'),
+    // the date in two short lines (weekday, then day and month) so the buttons keep their size
+    h('span', { class: 'd' }, new Intl.DateTimeFormat('ar', { weekday: 'long' }).format(now), h('br'),
+      new Intl.DateTimeFormat(latin() ? 'ar-u-nu-latn' : 'ar-u-nu-arab', { day: 'numeric', month: 'long' }).format(now))));
   content.append(wrap);
   sendHeight();
 }

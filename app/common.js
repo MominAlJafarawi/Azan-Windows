@@ -86,3 +86,86 @@ function enableEdgeResize(host) {
     host.append(e);
   }
 }
+
+/** the next prayer and how to say it: after Isha it is tomorrow's Fajr */
+function nextInfo(inp, now) {
+  const nx = Calc.next(inp, now);
+  const tomorrow = !isToday(nx.t);
+  const ram = Calc.isRamadan(now, S().hijriOffset);
+  const title = nx.p === 'sunrise' ? 'الشروق' : (nx.p === 'maghrib' && ram ? 'الإفطار' : `صلاة ${Calc.AR[nx.p]}`);
+  const at = `${tomorrow ? 'بكرة' : nx.p === 'sunrise' ? 'الشروق' : 'الأذان'} الساعة ${fmtTime(nx.t)}`;
+  return { nx, tomorrow, title, at };
+}
+
+/** the alert mode of one prayer as a readable chip; a click moves it on: adhan → silent → off → adhan */
+const MODE_CHIP = { adhan: '🔊 أذان', silent: '🔔 صامت', off: '🔕 بدون' };
+function modeChip(p) {
+  const m = modeOf(p);
+  return h('button', { class: `mchip ${m}`, title: `${MODE_AR[m]} · اكبس للتغيير`, onclick: (e) => {
+    e.stopPropagation();
+    const order = ['adhan', 'silent', 'off'];
+    window.azan.set({ modes: { ...S().modes, [p]: order[(order.indexOf(m) + 1) % 3] } });
+  } }, MODE_CHIP[m]);
+}
+
+/** today's times; the next one is gold. After Isha the Fajr row shows tomorrow's Fajr with "بكرة". */
+function prayerList(inp, now, nx) {
+  const t = Calc.compute(inp, now);
+  const tomorrow = !isToday(nx.t);
+  const list = h('div', { class: 'list glass' });
+  for (const p of Calc.PRAYERS) {
+    const next = p === nx.p;
+    const tm = next ? nx.t : t[p];
+    const past = !next && t[p] && t[p] <= now;
+    list.append(h('div', { class: `row${next ? ' next' : ''}${past ? ' past' : ''}` },
+      h('span', { class: 'ic' }, ICON[p]),
+      h('span', { class: 'nm' }, Calc.AR[p]),
+      next ? h('span', { class: 'badge' }, tomorrow ? 'بكرة' : 'التالية') : null,
+      h('span', { class: 'tm num' }, tm ? fmtTime(tm) : '--'),
+      modeChip(p)));
+  }
+  return list;
+}
+
+/** gold "new version" notice with the install button; stays until the update is installed (null when none) */
+function updatePill(long) {
+  const u = STATE && STATE.update;
+  if (!u || !u.available) return null;
+  const v = String(u.available.version).split('.').map((x) => (/^\d+$/.test(x) ? N(Number(x)) : x)).join('.');
+  if (u.progress != null) {
+    return h('div', { class: 'upd-pill busy' }, h('i', { class: 'gdot' }),
+      h('span', { class: 'tx' }, u.progress < 1 ? `عم ينزّل… ${N(Math.round(u.progress * 100))}٪` : 'عم يثبّت، وبيرجع يفتح لحاله…'));
+  }
+  const err = u.error && !u.checking;
+  return h('div', { class: 'upd-pill' + (err ? ' err' : ''), title: err ? u.error : `نسخة جديدة من أذان: ${v} (عندك ${STATE.version})` }, h('i', { class: 'gdot' }),
+    h('span', { class: 'tx' }, err ? u.error : `نسخة جديدة ${v}${long ? ' جاهزة' : ''}`),
+    h('button', { onclick: () => window.azan.send('update:install') }, err ? 'جرّب تاني' : 'حدّث هلأ'));
+}
+
+/** khatma card (home and panel). openPage(p) opens the mushaf on that page. */
+function khatmaCard(openPage, withRing = true) {
+  const s = S();
+  const k = Calc.khatma(s.khatmaDays, s.khatmaStart, s.khatmaRead, new Date(), s.khatmaBase);
+  const body = h('div', { style: { flex: '1', minWidth: '0' } }, h('h3', {}, 'وردي من القرآن'));
+  if (k.finished) {
+    body.append(h('div', { class: 'p' }, 'ختمت القرآن، تقبّل الله منك'),
+      h('div', { class: 'btns' }, h('button', { class: 'pill gold-fill', onclick: () => window.azan.send('khatma:new') }, 'ابدأ ختمة جديدة')));
+  } else {
+    const [a, b] = k.portion;
+    body.append(h('div', { class: 'p' }, `صفحة ${N(a)}–${N(b)} · سورة ${Calc.surahOnPage(a)}`),
+      h('div', { class: 'b', style: k.behind === 0 ? { color: 'var(--gold)' } : {} }, k.behind === 0 ? 'أنت على الموعد، ما شاء الله' : `باقي عليك اليوم ${N(k.behind)} صفحة`),
+      h('div', { class: 'btns' },
+        h('button', { class: 'pill gold-fill', onclick: () => window.azan.send('khatma:read', b) }, '✓ قرأت'),
+        h('button', { class: 'pill', onclick: () => openPage(a) }, '📖 افتح المصحف'),
+        k.replan ? h('button', { class: 'pill replan', title: `خطة جديدة من اليوم: نفس الورد (${N(Math.ceil(k.perDay))} صفحة باليوم) من الصفحة ${N(s.khatmaRead + 1)}`, onclick: () => window.azan.send('khatma:replan') }, '↻ رتّب الختمة من جديد') : null));
+  }
+  return h('div', { class: 'glass card kh' }, withRing ? ring(s.khatmaRead / Calc.PAGES) : null, body);
+}
+function ring(v) {
+  const r = 24, c = 2 * Math.PI * r;
+  const d = h('div');
+  d.innerHTML = `<svg class="ring" viewBox="0 0 56 56"><circle cx="28" cy="28" r="${r}" fill="none" stroke="rgba(247,235,204,.14)" stroke-width="5"/>
+    <circle cx="28" cy="28" r="${r}" fill="none" stroke="#ebc266" stroke-width="5" stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - Math.max(0.02, v))}" transform="rotate(-90 28 28)"/>
+    <text x="28" y="33" text-anchor="middle" font-size="13" font-weight="700" fill="#f7ebcc">${N(Math.round(v * 100))}٪</text></svg>`;
+  return d.firstChild;
+}

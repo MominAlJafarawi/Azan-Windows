@@ -179,19 +179,43 @@
   function surahOnPage(p) { let idx = 0; SURAH_START.forEach((s, i) => { if (s <= p) idx = i; }); return SURAH_NAMES[idx]; }
   const juzOfPage = (p) => (p < 22 ? 1 : Math.min(30, Math.floor((p - 2) / 20) + 1));
 
-  function khatma(days, start, lastRead, now) {
-    const perDay = PAGES / Math.max(1, days);
+  // base = pages already read when this plan started (0 for a plan from page 1; "رتّب الختمة من جديد" moves it)
+  function khatma(days, start, lastRead, now, base = 0) {
+    base = Math.min(PAGES - 1, Math.max(0, Math.round(Number(base) || 0)));
+    const perDay = (PAGES - base) / Math.max(1, days);
     const s = new Date(start); s.setHours(0, 0, 0, 0);
     const n = new Date(now); n.setHours(0, 0, 0, 0);
     const dayIndex = Math.max(1, Math.round((n - s) / 86400000) + 1);
-    const target = Math.min(PAGES, Math.ceil(perDay * dayIndex));
+    const target = Math.min(PAGES, base + Math.ceil(perDay * dayIndex));
     const chunk = Math.max(1, Math.ceil(perDay / 5));
     const finished = lastRead >= PAGES;
     const portion = finished ? null : [lastRead + 1, Math.min(PAGES, lastRead + chunk)];
-    return { perDay, dayIndex, target, chunk, finished, portion, behind: Math.max(0, target - lastRead) };
+    const behind = Math.max(0, target - lastRead);
+    // more than two days behind: offer to re-plan from today at the same daily pace
+    return { perDay, dayIndex, target, chunk, finished, portion, behind, replan: !finished && behind > Math.ceil(2 * perDay) };
+  }
+  /** new plan from today, same pages per day: {khatmaBase, khatmaDays} */
+  function khatmaReplan(days, base, lastRead) {
+    const perDay = (PAGES - Math.max(0, Number(base) || 0)) / Math.max(1, days);
+    const read = Math.min(PAGES - 1, Math.max(0, Math.round(lastRead)));
+    return { khatmaBase: read, khatmaDays: Math.max(1, Math.ceil((PAGES - read) / perDay)) };
   }
 
+  // test switch only (AZAN_NOW with AZAN_DATA): the whole app runs as if it were that time
+  function fakeClock(iso) {
+    const off = Date.parse(iso) - Date.now();
+    if (!isFinite(off) || !off || Date.__fake) return;
+    const R = Date;
+    class FakeDate extends R {
+      constructor(...a) { if (a.length) super(...a); else super(R.now() + off); }
+      static now() { return R.now() + off; }
+    }
+    FakeDate.__fake = true;
+    globalThis.Date = FakeDate;
+  }
+  if (typeof window !== 'undefined' && window.azan && window.azan.fakeNow) fakeClock(window.azan.fakeNow);
+
   const api = { PRAYERS, AR, METHODS, methodForCountry, compute, next, missedUntil, previous, num, time, hijri, isRamadan, gregorian,
-    countdownLong, countdown, PAGES, SURAH_NAMES, SURAH_START, surahOnPage, juzOfPage, khatma, sunPosition };
+    countdownLong, countdown, PAGES, SURAH_NAMES, SURAH_START, surahOnPage, juzOfPage, khatma, khatmaReplan, fakeClock, sunPosition };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Calc = api;
 })(typeof window !== 'undefined' ? window : globalThis);

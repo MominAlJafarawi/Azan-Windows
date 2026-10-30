@@ -10,14 +10,17 @@ document.head.append(h('style', {}, `
   .mtop .cd { font-size: 14px; color: var(--sec); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .mtop .cd b { color: var(--text); font-weight: 600; }
   .mtop .wb { display: flex; gap: 6px; margin-inline-start: 6px; }
+  .mtop .upd { display: flex; flex: none; }
+  .mtop .back, .mtop .ttl { white-space: nowrap; flex: none; }
+  .mtabs .tab .gdot { width: 8px; height: 8px; }
   .mtabs { position: relative; z-index: 1; display: flex; gap: 8px; flex-wrap: wrap; padding: 0 22px 14px; border-bottom: 1px solid rgba(235,194,102,.2); flex: none; }
   .mtabs .tab { font-size: 15px; padding: 8px 17px; }
   .mbody { position: relative; z-index: 1; flex: 1; min-height: 0; padding: 18px 22px 20px; }
   .mbody .view { height: 100%; display: none; }
   .mbody .view.on { display: block; }
-  /* reading the mushaf: plain navy sky, no twinkling stars or shooting star */
-  body.reading .sky .star, body.reading .sky .meteor { display: none; }
-  body.reading .sky .moon-glow { animation: none; }
+  /* reading the mushaf: plain even navy, nothing moving or shining behind the text (same as the Mac) */
+  body.reading .sky .star, body.reading .sky .meteor, body.reading .sky .moon, body.reading .sky .moon-glow { display: none; }
+  body.reading .sky::after { display: none; }
 `));
 
 const TABS = [['home', 'الرئيسية', '🕌'], ['adhkar', 'الأذكار', '🤲'], ['quran', 'المصحف', '📖'], ['settings', 'الإعدادات', '⚙️']];
@@ -25,10 +28,11 @@ const VIEWS = { home: HomeView, adhkar: AdhkarView, quran: MushafView, settings:
 const rootEl = document.getElementById('root');
 const backBtn = h('button', { class: 'back', title: 'رجوع للمكان اللي كنت فيه', onclick: back }, '→ رجوع');
 const cdEl = h('span', { class: 'cd' });
+const updEl = h('div', { class: 'upd nodrag' });
 const tabsEl = h('div', { class: 'mtabs' });
 const bodyEl = h('div', { class: 'mbody' });
 rootEl.append(
-  h('div', { class: 'mtop drag' }, backBtn, h('span', { class: 'ttl' }, 'أذان'), h('span', { class: 'sp' }), cdEl,
+  h('div', { class: 'mtop drag' }, backBtn, h('span', { class: 'ttl' }, 'أذان'), h('span', { class: 'sp' }), cdEl, updEl,
     h('div', { class: 'wb' },
       h('button', { class: 'icon-btn', title: 'تصغير', onclick: () => window.azan.send('win:min') }, '—'),
       h('button', { class: 'icon-btn', title: 'إغلاق', onclick: () => window.azan.send('win:close') }, '✕'))),
@@ -81,14 +85,22 @@ function back() {
 }
 
 function drawChrome() {
-  tabsEl.replaceChildren(...TABS.map(([k, t, ic]) => h('button', { class: 'tab' + (k === active ? ' on' : ''), onclick: () => { if (k !== active) nav({ tab: k }); } }, ic, ' ', t)));
+  const updDot = !!(STATE && STATE.update && STATE.update.available);
+  tabsEl.replaceChildren(...TABS.map(([k, t, ic]) => h('button', { class: 'tab' + (k === active ? ' on' : ''), title: k === 'settings' && updDot ? 'في نسخة جديدة' : null, onclick: () => { if (k !== active) nav({ tab: k }); } },
+    ic, ' ', t, k === 'settings' && updDot ? h('i', { class: 'gdot' }) : null)));
   backBtn.disabled = trail.length === 0;
   if (!STATE) return;
+  // update notice in the top bar (gold pill with the install button)
+  const pill = updatePill(false);
+  updEl.replaceChildren(...(pill ? [pill] : []));
   const inp = input();
-  if (!inp) { cdEl.replaceChildren(); return; }
+  // the home tab shows the countdown big in its card, so the header does not repeat it there
+  // (and in a narrow window with the update notice there is no room for it at all)
+  if (!inp || active === 'home' || (pill && window.innerWidth < 660)) { cdEl.replaceChildren(); return; }
   const now = new Date(), nx = Calc.next(inp, now);
   const name = nx.p === 'maghrib' && Calc.isRamadan(now, S().hijriOffset) ? 'الإفطار' : Calc.AR[nx.p];
-  cdEl.replaceChildren(h('b', {}, name), ' ', Calc.countdownLong((nx.t - now) / 1000, latin()), ` · ${fmtTime(nx.t)}`);
+  // next to the update notice there is less room: short countdown only
+  cdEl.replaceChildren(h('b', {}, name), ' ', pill ? Calc.countdown((nx.t - now) / 1000, latin()) : `${Calc.countdownLong((nx.t - now) / 1000, latin())} · ${fmtTime(nx.t)}`);
 }
 
 // first place: from the URL (the window was opened for something), otherwise home
@@ -116,4 +128,4 @@ function sky() {
   mountSky(rootEl, { moonX: Math.round(rootEl.clientWidth * 0.6), moonY: 34 });
 }
 setTimeout(sky, 30);
-window.addEventListener('resize', () => { clearTimeout(skyT); skyT = setTimeout(sky, 250); });
+window.addEventListener('resize', () => { clearTimeout(skyT); skyT = setTimeout(() => { sky(); drawChrome(); }, 250); });
